@@ -4,6 +4,7 @@ import {
   FloatRule,
   SimConfig,
   WorkspaceMode,
+  formatRuleString,
   matchesFloatRule,
 } from '../utils/tilingSim';
 import { triggerDownload } from '../utils/tarExport';
@@ -16,6 +17,7 @@ interface ConfigGeneratorProps {
 export function ConfigGenerator({ config, setConfig }: ConfigGeneratorProps) {
   const [newField, setNewField] = useState<FloatRule['field']>('app_id');
   const [newPattern, setNewPattern] = useState('');
+  const [newActions, setNewActions] = useState('float, size 55% 65%, center');
   const [testAppId, setTestAppId] = useState('pavucontrol');
   const [testTitle, setTestTitle] = useState('Volume Control');
   const [copied, setCopied] = useState(false);
@@ -37,6 +39,15 @@ export function ConfigGenerator({ config, setConfig }: ConfigGeneratorProps) {
       `split_ratio = ${config.splitRatio.toFixed(2)}`,
       `split_ratio_landscape = ${(config.dynamicOrientationRatio ? config.splitRatioLandscape : config.splitRatio).toFixed(2)}`,
       `split_ratio_portrait = ${(config.dynamicOrientationRatio ? config.splitRatioPortrait : config.splitRatio).toFixed(2)}`,
+      `mfact = ${config.mfact.toFixed(2)}`,
+      `force_split = ${config.forceSplit}`,
+      `new_status = ${config.newStatus}`,
+      `single_window_aspect = ${config.singleWindowAspect}`,
+      `smart_gaps = ${config.smartGaps ? 'true' : 'false'}`,
+      `inner_gap = ${config.innerGap}`,
+      `outer_gap = ${config.outerGap}`,
+      `enable_swallow = ${config.enableSwallow ? 'true' : 'false'}`,
+      `swallow_terminals = ${config.swallowTerminals.join(', ')}`,
       `split_width = ${config.splitWidth}`,
       `split_height = ${config.splitHeight}`,
       `tabbed_on_min = ${config.tabbedOnMin ? 'true' : 'false'}`,
@@ -54,11 +65,10 @@ export function ConfigGenerator({ config, setConfig }: ConfigGeneratorProps) {
 
     lines.push('', '[float_rules]');
     if (config.floatRules.length === 0) {
-      lines.push('# rule = app_id:pavucontrol');
+      lines.push('# rule = app_id:pavucontrol -> float, size 55% 65%, center');
     } else {
       config.floatRules.forEach((r) => {
-        const prefix = r.field === 'any' ? '' : `${r.field}:`;
-        lines.push(`rule = ${prefix}${r.pattern}`);
+        lines.push(`rule = ${formatRuleString(r)}`);
       });
     }
 
@@ -73,7 +83,12 @@ export function ConfigGenerator({ config, setConfig }: ConfigGeneratorProps) {
       ...c,
       floatRules: [
         ...c.floatRules,
-        { id: `fr-${Date.now()}`, field: newField, pattern: trimmed },
+        {
+          id: `fr-${Date.now()}`,
+          field: newField,
+          pattern: trimmed,
+          actions: newActions.trim() || undefined,
+        },
       ],
     }));
     setNewPattern('');
@@ -138,8 +153,8 @@ export function ConfigGenerator({ config, setConfig }: ConfigGeneratorProps) {
                       <span className="text-xs font-mono font-medium text-slate-800 tabular-nums">
                         Workspace {ws}
                       </span>
-                      <div className="inline-flex items-center p-0.5 bg-slate-100 rounded-md border border-slate-200">
-                        {(['dwindle', 'master-stack', 'tabbed'] as const).map((mode) => (
+                      <div className="inline-flex flex-wrap items-center p-0.5 bg-slate-100 rounded-md border border-slate-200">
+                        {(['dwindle', 'master-stack', 'center-master', 'tabbed'] as const).map((mode) => (
                           <button
                             key={mode}
                             type="button"
@@ -164,39 +179,49 @@ export function ConfigGenerator({ config, setConfig }: ConfigGeneratorProps) {
             <div className="border border-slate-200 rounded-lg p-4 bg-white space-y-4">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">
-                  Auto-Float Rules
+                  Rich Auto-Float &amp; Window Rules
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Windows matching <code className="font-mono">app_id</code> or <code className="font-mono">title</code> automatically receive <code className="font-mono">floating enable</code>.
+                  Match <code className="font-mono">app_id</code> or <code className="font-mono">title</code> and optionally chain <code className="font-mono">float, sticky, size W% H%, center, move X% Y%, opacity, border none</code>.
                 </p>
               </div>
 
-              <form onSubmit={handleAddRule} className="flex flex-wrap gap-2">
-                <select
-                  aria-label="Match property"
-                  value={newField}
-                  onChange={(e) => setNewField(e.target.value as FloatRule['field'])}
-                  className="px-2.5 py-1.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-md text-slate-800"
-                >
-                  <option value="app_id">app_id</option>
-                  <option value="title">title</option>
-                  <option value="any">any</option>
-                </select>
+              <form onSubmit={handleAddRule} className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    aria-label="Match property"
+                    value={newField}
+                    onChange={(e) => setNewField(e.target.value as FloatRule['field'])}
+                    className="px-2.5 py-1.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-md text-slate-800"
+                  >
+                    <option value="app_id">app_id</option>
+                    <option value="title">title</option>
+                    <option value="any">any</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={newPattern}
+                    onChange={(e) => setNewPattern(e.target.value)}
+                    placeholder="e.g. org.keepassxc.KeePassXC"
+                    aria-label="Auto-float pattern"
+                    className="flex-1 min-w-[160px] px-3 py-1.5 text-xs font-mono border border-slate-200 rounded-md focus-visible:outline-2 focus-visible:outline-blue-600"
+                  />
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors whitespace-nowrap shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Rule
+                  </button>
+                </div>
                 <input
                   type="text"
-                  value={newPattern}
-                  onChange={(e) => setNewPattern(e.target.value)}
-                  placeholder="e.g. org.keepassxc.KeePassXC"
-                  aria-label="Auto-float pattern"
-                  className="flex-1 min-w-[160px] px-3 py-1.5 text-xs font-mono border border-slate-200 rounded-md focus-visible:outline-2 focus-visible:outline-blue-600"
+                  value={newActions}
+                  onChange={(e) => setNewActions(e.target.value)}
+                  placeholder="Actions (optional): float, sticky, size 55% 65%, center"
+                  aria-label="Window rule actions"
+                  className="w-full px-3 py-1.5 text-xs font-mono text-slate-700 bg-slate-50 border border-slate-200 rounded-md focus-visible:outline-2 focus-visible:outline-blue-600"
                 />
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors whitespace-nowrap shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Rule
-                </button>
               </form>
 
               <div className="divide-y divide-slate-100 border border-slate-200 rounded-md">
@@ -213,6 +238,9 @@ export function ConfigGenerator({ config, setConfig }: ConfigGeneratorProps) {
                       <span className="text-slate-800 truncate">
                         <span className="text-slate-500">{rule.field}:</span>
                         {rule.pattern}
+                        {rule.actions ? (
+                          <span className="text-blue-700"> -&gt; {rule.actions}</span>
+                        ) : null}
                       </span>
                       <button
                         type="button"
@@ -229,17 +257,17 @@ export function ConfigGenerator({ config, setConfig }: ConfigGeneratorProps) {
 
               {/* Rule Tester */}
               <div className="pt-3 border-t border-slate-200 space-y-2.5">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-slate-800">
                     Rule Match Tester
                   </span>
                   <span
-                    className={`text-xs font-mono font-medium ${
+                    className={`text-xs font-mono font-medium truncate ${
                       testMatch ? 'text-amber-700' : 'text-emerald-700'
                     }`}
                   >
                     {testMatch
-                      ? `Float (${testMatch.field}:${testMatch.pattern})`
+                      ? `Match -> ${testMatch.actions ?? 'floating enable'}`
                       : 'Tile normally (dwindle)'}
                   </span>
                 </div>

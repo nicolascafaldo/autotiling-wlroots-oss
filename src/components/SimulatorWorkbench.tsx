@@ -22,6 +22,7 @@ import {
   computeWindowRects,
   evaluateSplit,
   spawnWindowAtFocus,
+  swallowFocusedTerminal,
   closeWindowById,
   mutateFocusedWindow,
 } from '../utils/tilingSim';
@@ -55,9 +56,19 @@ export function SimulatorWorkbench({
     [monitorId]
   );
 
+  const activeWorkspaceMode = config.workspaceModes[workspaceNum] ?? 'dwindle';
+
   const windows = useMemo(
-    () => computeWindowRects(tree, { width: monitor.width, height: monitor.height }),
-    [tree, monitor]
+    () =>
+      computeWindowRects(tree, { width: monitor.width, height: monitor.height }, {
+        mfact: config.mfact,
+        smartGaps: config.smartGaps,
+        innerGap: config.innerGap,
+        outerGap: config.outerGap,
+        singleWindowAspect: config.singleWindowAspect,
+        workspaceMode: activeWorkspaceMode,
+      }),
+    [tree, monitor, config.mfact, config.smartGaps, config.innerGap, config.outerGap, config.singleWindowAspect, activeWorkspaceMode]
   );
 
   const evaluation = useMemo(
@@ -131,16 +142,27 @@ export function SimulatorWorkbench({
       focusedId,
       evaluation,
       nextSeq,
-      config.floatRules
+      config.floatRules,
+      undefined,
+      config.forceSplit,
+      config.newStatus
     );
     setTree(nextTree);
     setFocusedId(newWindowId);
     setNextSeq((s) => s + 1);
 
-    const nextWindows = computeWindowRects(nextTree, {
-      width: monitor.width,
-      height: monitor.height,
-    });
+    const nextWindows = computeWindowRects(
+      nextTree,
+      { width: monitor.width, height: monitor.height },
+      {
+        mfact: config.mfact,
+        smartGaps: config.smartGaps,
+        innerGap: config.innerGap,
+        outerGap: config.outerGap,
+        singleWindowAspect: config.singleWindowAspect,
+        workspaceMode: activeWorkspaceMode,
+      }
+    );
     const spawned = nextWindows.find((w) => w.id === newWindowId);
     const nextEval = evaluateSplit(nextWindows, newWindowId, config, monitor, workspaceNum);
 
@@ -152,33 +174,72 @@ export function SimulatorWorkbench({
     if (autoFloated) {
       appendLog(
         'autotile',
-        `matched float rule (${autoFloated.field}:${autoFloated.pattern}) -> RUN_COMMAND floating enable`
+        `matched rule (${autoFloated.field}:${autoFloated.pattern}) -> RUN_COMMAND ${autoFloated.actions ?? 'floating enable'}`
       );
       return;
+    }
+
+    if (
+      config.newStatus === 'master' &&
+      (activeWorkspaceMode === 'master-stack' || activeWorkspaceMode === 'center-master')
+    ) {
+      appendLog('sway-ipc', `new_status=master -> swap container with mark _autotile_master`);
     }
 
     appendLog(
       'autotile',
       nextEval.decision === 'skip'
         ? `spawned ${newWindowId} (${spawned?.rect.width}x${spawned?.rect.height}) -> skip: ${nextEval.skipReason}`
-        : `spawned ${newWindowId} -> next ${nextEval.decision}`
+        : `spawned ${newWindowId} (${config.forceSplit === 'left' ? 'prepended' : 'appended'}) -> next ${nextEval.decision}`
+    );
+  }
+
+  function handleSimulateSwallow() {
+    const targetWin = windows.find((w) => w.id === focusedId);
+    if (!targetWin || targetWin.floating) {
+      appendLog('autotile', 'skip swallow: focus a tiled terminal window first');
+      return;
+    }
+    if (!config.enableSwallow) {
+      setConfig((c) => ({ ...c, enableSwallow: true }));
+    }
+    const { nextTree, newWindowId, swallowedTermApp } = swallowFocusedTerminal(
+      tree,
+      focusedId,
+      nextSeq
+    );
+    setTree(nextTree);
+    setFocusedId(newWindowId);
+    setNextSeq((s) => s + 1);
+    appendLog(
+      'sway-ipc',
+      `/proc PPID matched ${swallowedTermApp} -> [con_id=${focusedId}] move scratchpad (swallowed by mpv)`
     );
   }
 
   function handleCloseFocused() {
-    if (windows.length <= 1) {
+    const closingWin = windows.find((w) => w.id === focusedId);
+    if (windows.length <= 1 && !closingWin?.hasSwallowed) {
       appendLog('autotile', 'skip close: keeping minimum 1 window in workspace preview');
       return;
     }
     const closingId = focusedId;
-    const { nextTree, nextFocusedId } = closeWindowById(tree, closingId);
+    const { nextTree, nextFocusedId, restoredTermApp } = closeWindowById(tree, closingId);
     setTree(nextTree);
     if (nextFocusedId) {
       setFocusedId(nextFocusedId);
-      const nextWindows = computeWindowRects(nextTree, {
-        width: monitor.width,
-        height: monitor.height,
-      });
+      const nextWindows = computeWindowRects(
+        nextTree,
+        { width: monitor.width, height: monitor.height },
+        {
+          mfact: config.mfact,
+          smartGaps: config.smartGaps,
+          innerGap: config.innerGap,
+          outerGap: config.outerGap,
+          singleWindowAspect: config.singleWindowAspect,
+          workspaceMode: activeWorkspaceMode,
+        }
+      );
       const nextEval = evaluateSplit(
         nextWindows,
         nextFocusedId,
@@ -187,6 +248,12 @@ export function SimulatorWorkbench({
         workspaceNum
       );
       appendLog('wayland', `zwlr_foreign_toplevel_handle_v1.closed (${closingId})`);
+      if (restoredTermApp) {
+        appendLog(
+          'sway-ipc',
+          `window::close -> restored swallowed terminal ${restoredTermApp} from scratchpad`
+        );
+      }
       appendLog(
         'autotile',
         nextEval.decision === 'skip'
@@ -269,6 +336,18 @@ export function SimulatorWorkbench({
     } else if (config.splitRatio !== 1.0) {
       parts.push(`-sr ${config.splitRatio.toFixed(2)}`);
     }
+    if (config.mfact !== 0.5) parts.push(`--mfact ${config.mfact.toFixed(2)}`);
+    if (config.forceSplit !== 'auto') parts.push(`--force-split ${config.forceSplit}`);
+    if (config.newStatus !== 'slave') parts.push(`--new-status ${config.newStatus}`);
+    if (config.singleWindowAspect !== '16:9') {
+      parts.push(`--single-window-aspect ${config.singleWindowAspect}`);
+    }
+    if (config.smartGaps) {
+      parts.push('--smart-gaps');
+      if (config.innerGap !== 10) parts.push(`--inner-gap ${config.innerGap}`);
+      if (config.outerGap !== 0) parts.push(`--outer-gap ${config.outerGap}`);
+    }
+    if (config.enableSwallow) parts.push('--swallow');
     if (config.splitWidth > 0) parts.push(`-sw ${config.splitWidth}`);
     if (config.splitHeight > 0) parts.push(`-sh ${config.splitHeight}`);
     if (config.tabbedOnMin) parts.push('--tabbed-on-min');
@@ -478,6 +557,15 @@ export function SimulatorWorkbench({
                 </button>
                 <button
                   type="button"
+                  onClick={handleSimulateSwallow}
+                  title="Simulate terminal window swallowing (close child to restore)"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-md transition-colors whitespace-nowrap shrink-0"
+                >
+                  <Terminal className="w-3.5 h-3.5" />
+                  Swallow Child
+                </button>
+                <button
+                  type="button"
                   onClick={handleResetLayout}
                   aria-label="Reset workspace layout"
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-md transition-colors whitespace-nowrap shrink-0"
@@ -546,12 +634,15 @@ export function SimulatorWorkbench({
                         top: `${topPct}%`,
                         width: `${widthPct}%`,
                         height: `${heightPct}%`,
+                        opacity: win.opacity ?? 1,
                         zIndex: win.fullscreen ? 30 : win.floating ? 20 : 10,
                       }}
                       className={`absolute text-left p-2.5 rounded-sm transition-colors flex flex-col justify-between overflow-hidden cursor-pointer ${
                         isFocused
                           ? 'bg-slate-800 border-2 border-blue-500 text-white'
-                          : 'bg-slate-900/95 border border-slate-700 text-slate-300 hover:border-slate-500'
+                          : win.borderNone
+                            ? 'bg-slate-900/95 border border-transparent text-slate-300 hover:border-slate-500'
+                            : 'bg-slate-900/95 border border-slate-700 text-slate-300 hover:border-slate-500'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 w-full">
@@ -559,7 +650,13 @@ export function SimulatorWorkbench({
                           {win.appId}
                         </span>
                         <span className="text-[11px] font-mono tabular-nums text-slate-400 shrink-0">
-                          d{win.depth}
+                          {win.sticky
+                            ? 'sticky'
+                            : win.aspectCentered
+                              ? config.singleWindowAspect
+                              : win.hasSwallowed
+                                ? 'swallowed'
+                                : `d${win.depth}`}
                         </span>
                       </div>
 
@@ -568,10 +665,15 @@ export function SimulatorWorkbench({
                           evaluation.decision === 'splitv') && (
                           <div
                             aria-hidden="true"
+                            style={
+                              evaluation.decision === 'splith'
+                                ? { left: `${config.mfact * 100}%` }
+                                : { top: `${config.mfact * 100}%` }
+                            }
                             className={`pointer-events-none absolute border-dashed border-blue-400/60 ${
                               evaluation.decision === 'splith'
-                                ? 'inset-y-2 left-1/2 border-l'
-                                : 'inset-x-2 top-1/2 border-t'
+                                ? 'inset-y-2 border-l'
+                                : 'inset-x-2 border-t'
                             }`}
                           />
                         )}
@@ -579,10 +681,14 @@ export function SimulatorWorkbench({
                       <div className="flex items-end justify-between gap-2 w-full mt-auto">
                         <span className="text-[11px] text-slate-400 truncate">
                           {win.floating
-                            ? 'floating'
+                            ? win.sticky
+                              ? 'floating · sticky'
+                              : 'floating'
                             : win.fullscreen
                               ? 'fullscreen'
-                              : `parent: ${win.parentLayout}`}
+                              : win.hasSwallowed
+                                ? 'swallowed terminal (close to restore)'
+                                : `parent: ${win.parentLayout}`}
                         </span>
                         <span className="text-[11px] font-mono tabular-nums text-slate-300 shrink-0">
                           {win.rect.width}×{win.rect.height}
@@ -891,6 +997,161 @@ export function SimulatorWorkbench({
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* --mfact, --force-split & --new-status */}
+              <div className="space-y-2.5 pt-1 border-t border-slate-100">
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <label htmlFor="flag-mfact" className="font-mono text-slate-700">
+                      --mfact (split ratio)
+                    </label>
+                    <span className="font-mono tabular-nums text-slate-900 font-medium">
+                      {Math.round(config.mfact * 100)} / {100 - Math.round(config.mfact * 100)}
+                    </span>
+                  </div>
+                  <input
+                    id="flag-mfact"
+                    type="range"
+                    min={0.2}
+                    max={0.8}
+                    step={0.05}
+                    value={config.mfact}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, mfact: Number(e.target.value) }))
+                    }
+                    className="w-full accent-blue-600"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="flag-force-split" className="block text-[11px] font-mono text-slate-700 mb-1">
+                      --force-split
+                    </label>
+                    <select
+                      id="flag-force-split"
+                      value={config.forceSplit}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          forceSplit: e.target.value as SimConfig['forceSplit'],
+                        }))
+                      }
+                      className="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-200 rounded-md text-slate-800"
+                    >
+                      <option value="auto">auto</option>
+                      <option value="left">left (prepend)</option>
+                      <option value="right">right (append)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="flag-new-status" className="block text-[11px] font-mono text-slate-700 mb-1">
+                      --new-status
+                    </label>
+                    <select
+                      id="flag-new-status"
+                      value={config.newStatus}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          newStatus: e.target.value as SimConfig['newStatus'],
+                        }))
+                      }
+                      className="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-200 rounded-md text-slate-800"
+                    >
+                      <option value="slave">slave</option>
+                      <option value="master">master</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* --single-window-aspect, --smart-gaps & --swallow */}
+              <div className="space-y-2 pt-1 border-t border-slate-100">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label htmlFor="flag-aspect" className="block text-[11px] font-mono text-slate-700 mb-1">
+                      Solo aspect
+                    </label>
+                    <select
+                      id="flag-aspect"
+                      value={config.singleWindowAspect}
+                      onChange={(e) =>
+                        setConfig((c) => ({ ...c, singleWindowAspect: e.target.value }))
+                      }
+                      className="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-200 rounded-md text-slate-800"
+                    >
+                      <option value="16:9">16:9</option>
+                      <option value="4:3">4:3</option>
+                      <option value="0">0 (off)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="flag-inner-gap" className="block text-[11px] font-mono text-slate-700 mb-1">
+                      Inner gap
+                    </label>
+                    <input
+                      id="flag-inner-gap"
+                      type="number"
+                      min={0}
+                      max={40}
+                      step={2}
+                      value={config.innerGap}
+                      onChange={(e) =>
+                        setConfig((c) => ({ ...c, innerGap: Math.max(0, Number(e.target.value)) }))
+                      }
+                      className="w-full px-2 py-1.5 text-xs font-mono tabular-nums border border-slate-200 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="flag-outer-gap" className="block text-[11px] font-mono text-slate-700 mb-1">
+                      Outer gap
+                    </label>
+                    <input
+                      id="flag-outer-gap"
+                      type="number"
+                      min={0}
+                      max={40}
+                      step={2}
+                      value={config.outerGap}
+                      onChange={(e) =>
+                        setConfig((c) => ({ ...c, outerGap: Math.max(0, Number(e.target.value)) }))
+                      }
+                      className="w-full px-2 py-1.5 text-xs font-mono tabular-nums border border-slate-200 rounded-md"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <label htmlFor="flag-smart-gaps" className="text-xs font-mono text-slate-700">
+                    --smart-gaps (0 gap on 1 window)
+                  </label>
+                  <input
+                    id="flag-smart-gaps"
+                    type="checkbox"
+                    checked={config.smartGaps}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, smartGaps: e.target.checked }))
+                    }
+                    className="h-4 w-4 accent-blue-600 rounded"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <label htmlFor="flag-swallow" className="text-xs font-mono text-slate-700">
+                    --swallow (terminal swallowing)
+                  </label>
+                  <input
+                    id="flag-swallow"
+                    type="checkbox"
+                    checked={config.enableSwallow}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, enableSwallow: e.target.checked }))
+                    }
+                    className="h-4 w-4 accent-blue-600 rounded"
+                  />
                 </div>
               </div>
 

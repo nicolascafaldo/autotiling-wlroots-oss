@@ -22,6 +22,15 @@ function createDefaultConfig(): SimConfig {
     dynamicOrientationRatio: true,
     splitRatioLandscape: 1.0,
     splitRatioPortrait: 0.8,
+    mfact: 0.5,
+    forceSplit: 'auto',
+    newStatus: 'slave',
+    singleWindowAspect: '16:9',
+    smartGaps: true,
+    innerGap: 10,
+    outerGap: 0,
+    enableSwallow: false,
+    swallowTerminals: ['foot', 'alacritty', 'kitty'],
     splitWidth: 0,
     splitHeight: 0,
     tabbedOnMin: false,
@@ -46,7 +55,7 @@ export default function App() {
     const entries = FORK_FILES.map((file) => ({
       path: file.path,
       content: file.content,
-      mode: file.path.endsWith('.sh') ? '0755' : '0644',
+      mode: file.path.endsWith('.sh') || file.path === 'packaging/debian/rules' ? '0755' : '0644',
     }));
     const blob = buildTarArchive('autotiling-wl-1.1.0', entries);
     triggerDownload('autotiling-wl-1.1.0.tar', blob);
@@ -93,10 +102,10 @@ export default function App() {
               Source Tree
             </a>
             <a
-              href="#fedora-45"
+              href="#install-guide"
               className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
-              Fedora 45
+              Install Guide
             </a>
           </nav>
 

@@ -65,7 +65,7 @@ export function SourceExplorer({ onDownloadTarball }: SourceExplorerProps) {
               Complete C17 &amp; Meson fork source tree
             </h2>
             <p className="mt-1.5 text-sm text-slate-600">
-              Inspect every source file, Wayland protocol XML, Meson build definition, and Fedora 45 RPM spec.
+              Inspect every source file, Wayland protocol XML, Meson build definition, and packaging files for Fedora, Debian, Arch, and Void.
             </p>
           </div>
           <button

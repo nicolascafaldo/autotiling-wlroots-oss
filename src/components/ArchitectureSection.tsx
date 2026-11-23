@@ -107,6 +107,36 @@ const CLI_PARITY_ROWS: CliFlagRow[] = [
     behavior: 'Height/width ratio threshold; portrait override activates automatically on vertical monitors.',
   },
   {
+    flag: '--mfact',
+    arg: 'R',
+    defaultVal: '0.50',
+    behavior: 'Master/primary split proportion (0.10–0.90) applied via Sway resize set and River layout geometry.',
+  },
+  {
+    flag: '--force-split / --new-status',
+    arg: 'SIDE / MODE',
+    defaultVal: 'auto / slave',
+    behavior: 'Controls left/right split placement and optionally promotes new windows to master via IPC swap.',
+  },
+  {
+    flag: '--single-window-aspect',
+    arg: 'W:H',
+    defaultVal: '16:9',
+    behavior: 'Centers a solo tiled window on ultrawide monitors (e.g. 16:9 or 4:3; 0 disables).',
+  },
+  {
+    flag: '--smart-gaps / --inner-gap / --outer-gap',
+    arg: 'PX',
+    defaultVal: 'true / 10 / 0',
+    behavior: 'Collapses gaps automatically when <= 1 tiled window or tabbed layout is active.',
+  },
+  {
+    flag: '--swallow / --swallow-term',
+    arg: 'LIST',
+    defaultVal: 'false / foot,...',
+    behavior: 'Hides parent terminal via /proc/<pid>/stat PPID inspection and restores it on child close.',
+  },
+  {
     flag: '--tabbed-on-min',
     arg: 'none',
     defaultVal: 'false',
@@ -116,13 +146,13 @@ const CLI_PARITY_ROWS: CliFlagRow[] = [
     flag: '--float-rule',
     arg: 'RULE',
     defaultVal: 'none',
-    behavior: 'Matches app_id: or title: substring and runs floating enable automatically.',
+    behavior: 'Matches app_id:/title: with optional -> float, sticky, size W% H%, center, move X% Y%, opacity, border none.',
   },
   {
     flag: '--ws-layout',
     arg: 'WS:MODE',
     defaultVal: 'dwindle',
-    behavior: 'Assigns per-workspace modes (dwindle, master-stack, or tabbed).',
+    behavior: 'Assigns per-workspace modes (dwindle, master-stack, center-master, or tabbed).',
   },
   {
     flag: '-e, --events / --backend',

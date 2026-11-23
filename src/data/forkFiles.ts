@@ -1,6 +1,6 @@
 export interface ForkFile {
   path: string;
-  language: 'c' | 'meson' | 'xml' | 'spec' | 'ini' | 'markdown' | 'troff';
+  language: 'c' | 'meson' | 'xml' | 'spec' | 'ini' | 'markdown' | 'troff' | 'shell' | 'debian' | 'html';
   category: 'Core' | 'Protocols' | 'Build' | 'Packaging' | 'Docs & Config';
   summary: string;
   content: string;
@@ -143,10 +143,28 @@ endforeach
 limit = 0
 debug = false
 
-# Dynamic orientation-aware split ratios
+# Dynamic orientation-aware split direction bias
 split_ratio = 1.00
 split_ratio_landscape = 1.00
 split_ratio_portrait = 0.80
+
+# Hyprland-style split sizing, placement, and master promotion
+# mfact = 0.55 splits 55% / 45% (0.50 = equal halves)
+mfact = 0.50
+force_split = auto
+new_status = slave
+
+# Ultrawide single-window centering (e.g. 16:9 or 4:3; 0 disables)
+single_window_aspect = 16:9
+
+# Dynamic smart gaps (collapses inner/outer gaps when <= 1 tiled window)
+smart_gaps = true
+inner_gap = 10
+outer_gap = 0
+
+# Terminal window swallowing (hides foot/alacritty/kitty while child GUI runs)
+enable_swallow = false
+swallow_terminals = foot, alacritty, kitty
 
 # Minimum container thresholds (pixels); set tabbed_on_min = true to switch
 # tiny splits into tabbed containers instead of skipping.
@@ -160,18 +178,19 @@ workspaces =
 events = window
 
 [workspaces]
-# Per-workspace layout modes: dwindle | master-stack | tabbed
+# Per-workspace layout modes: dwindle | master-stack | center-master | tabbed
 # 1 = dwindle
 # 2 = master-stack
-# 3 = tabbed
+# 3 = center-master
+# 4 = tabbed
 
 [float_rules]
-# Substring rules matched against Wayland app_id or window title.
-# Prefix with app_id: or title: to target a single property.
-rule = app_id:pavucontrol
-rule = app_id:org.gnome.Calculator
-rule = app_id:nm-connection-editor
-rule = title:Picture-in-Picture
+# Substring rules with optional Hyprland-style actions after ->
+# Supported actions: float, sticky, center, size W% H%, move X% Y%, opacity R, border none
+rule = app_id:pavucontrol -> float, size 55% 65%, center
+rule = app_id:org.gnome.Calculator -> float, center
+rule = app_id:nm-connection-editor -> float, center
+rule = title:Picture-in-Picture -> float, sticky, size 28% 28%, move 70% 68%
 rule = title:Extension:
 `,
   },
@@ -232,14 +251,41 @@ Height-to-width split ratio multiplier (default 1.0).
 .BR \-\-splitratio\-portrait " " \fIR\fR
 Override split ratio when active output height exceeds width.
 .TP
+.BR \-\-mfact " " \fIR\fR
+Master/primary split size fraction between 0.10 and 0.90 (default 0.50; e.g. 0.60 for 60/40 splits).
+.TP
+.BR \-\-force\-split " " \fISIDE\fR
+Placement side for new splits: \fBauto\fR, \fBleft\fR (prepend), or \fBright\fR (append).
+.TP
+.BR \-\-new\-status " " \fIMODE\fR
+Where newly spawned windows appear in master layouts: \fBslave\fR or \fBmaster\fR (auto-promote).
+.TP
+.BR \-\-single\-window\-aspect " " \fIW:H\fR
+Center a solo tiled window on ultrawide monitors to aspect ratio \fIW:H\fR (e.g. \fI16:9\fR, \fI0\fR disables).
+.TP
+.BR \-\-smart\-gaps
+Collapse inner and outer gaps when a workspace has 1 or fewer tiled windows.
+.TP
+.BR \-\-inner\-gap " " \fIPX\fR
+Inner gap size in pixels when multiple tiled windows are present (default 10).
+.TP
+.BR \-\-outer\-gap " " \fIPX\fR
+Outer gap size in pixels when multiple tiled windows are present (default 0).
+.TP
+.BR \-\-swallow
+Enable terminal window swallowing using \fI/proc/<pid>/stat\fR parent PID matching.
+.TP
+.BR \-\-swallow\-term " " \fILIST\fR
+Comma-separated terminal \fIapp_id\fR list eligible for swallowing (default: \fIfoot,alacritty,kitty\fR).
+.TP
 .BR \-\-tabbed\-on\-min
 Switch container layout to \fBtabbed\fR when below \fB--splitwidth\fR or \fB--splitheight\fR.
 .TP
 .BR \-\-float\-rule " " \fIRULE\fR
-Add an auto-float rule (\fIapp_id:foo\fR or \fItitle:bar\fR). May be repeated.
+Add an auto-float/window rule (\fIapp_id:foo\fR or \fItitle:bar\fR, optionally followed by \fI-> float, sticky, size 55% 65%, center\fR). May be repeated.
 .TP
 .BR \-\-ws\-layout " " \fIWS:MODE\fR
-Set per-workspace layout mode (\fIdwindle\fR, \fImaster-stack\fR, or \fItabbed\fR).
+Set per-workspace layout mode (\fIdwindle\fR, \fImaster-stack\fR, \fIcenter-master\fR, or \fItabbed\fR).
 .TP
 .BR \-e ", " \-\-events " " \fIEV...\fR
 Sway IPC events to subscribe to (default: window).
@@ -272,6 +318,7 @@ System base configuration template.
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #define MAX_FILTER_ITEMS 64
 #define MAX_EVENT_ITEMS  16
@@ -296,8 +343,20 @@ typedef enum {
 typedef enum {
   WS_MODE_DWINDLE = 0,
   WS_MODE_MASTER_STACK,
+  WS_MODE_CENTER_MASTER,
   WS_MODE_TABBED,
 } WorkspaceLayoutMode;
+
+typedef enum {
+  FORCE_SPLIT_AUTO = 0,
+  FORCE_SPLIT_LEFT,
+  FORCE_SPLIT_RIGHT,
+} ForceSplitSide;
+
+typedef enum {
+  NEW_STATUS_SLAVE = 0,
+  NEW_STATUS_MASTER,
+} NewWindowStatus;
 
 typedef enum {
   FLOAT_MATCH_ANY = 0,
@@ -308,6 +367,18 @@ typedef enum {
 typedef struct {
   FloatMatchField field;
   char pattern[128];
+  bool enable_float;
+  bool sticky;
+  bool center;
+  int size_w;
+  int size_h;
+  bool size_percent;
+  int move_x;
+  int move_y;
+  bool move_percent;
+  bool has_move;
+  double opacity;
+  char border_mode[32];
 } AutoFloatRule;
 
 typedef struct {
@@ -326,6 +397,14 @@ typedef struct {
   double split_ratio;
   double split_ratio_landscape;
   double split_ratio_portrait;
+  double mfact;
+  ForceSplitSide force_split;
+  NewWindowStatus new_status;
+  double single_window_aspect;
+  bool smart_gaps;
+  int inner_gap;
+  int outer_gap;
+  bool enable_swallow;
   AutotileBackend backend;
 
   char *outputs[MAX_FILTER_ITEMS];
@@ -336,6 +415,9 @@ typedef struct {
 
   char *events[MAX_EVENT_ITEMS];
   size_t events_count;
+
+  char *swallow_terminals[MAX_FILTER_ITEMS];
+  size_t swallow_terminals_count;
 
   AutoFloatRule float_rules[MAX_FLOAT_RULES];
   size_t float_rules_count;
@@ -355,9 +437,12 @@ typedef struct {
 } ContainerRect;
 
 typedef struct {
+  int64_t id;
+  int pid;
   ContainerRect rect;
   int output_width;
   int output_height;
+  int ws_tiled_count;
   bool floating;
   bool fullscreen;
   bool parent_tabbed_or_stacked;
@@ -374,12 +459,24 @@ typedef struct {
   SplitDirection direction;
   const char *command;
   const char *skip_reason;
+  char aux_command[512];
+  int resize_pct;
+  WorkspaceLayoutMode ws_mode;
 } SplitDecision;
 
 void autotile_config_init(AutotileConfig *cfg);
 void autotile_config_free(AutotileConfig *cfg);
 bool autotile_add_float_rule(AutotileConfig *cfg, const char *spec);
 bool autotile_add_ws_mode(AutotileConfig *cfg, const char *spec);
+void autotile_clear_swallow_terms(AutotileConfig *cfg);
+bool autotile_add_swallow_term(AutotileConfig *cfg, const char *term);
+bool autotile_is_swallow_terminal(const AutotileConfig *cfg, const char *app_id);
+double autotile_parse_aspect(const char *spec);
+WorkspaceLayoutMode autotile_resolve_ws_mode(
+  const AutotileConfig *cfg,
+  int ws_num,
+  const char *ws_name
+);
 
 SplitDecision autotile_evaluate_split(
   const AutotileConfig *cfg,
@@ -393,12 +490,20 @@ SplitDecision autotile_evaluate_split(
     path: 'src/autotile.c',
     language: 'c',
     category: 'Core',
-    summary: 'Implements recursive dwindle splits, auto-float rules, per-workspace layout modes, dynamic orientation ratio, and tabbed fallback.',
+    summary: 'Implements dwindle, center-master, mfact ratios, rich float actions, smart gaps, ultrawide aspect centering, and orientation split ratios.',
     content: `#include "autotile.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static char *trim_local(char *s) {
+  while (*s && isspace((unsigned char)*s)) s++;
+  size_t len = strlen(s);
+  while (len > 0 && isspace((unsigned char)s[len - 1])) s[--len] = '\\0';
+  return s;
+}
 
 void autotile_config_init(AutotileConfig *cfg) {
   memset(cfg, 0, sizeof(*cfg));
@@ -411,13 +516,98 @@ void autotile_config_init(AutotileConfig *cfg) {
   cfg->split_ratio = 1.0;
   cfg->split_ratio_landscape = 1.0;
   cfg->split_ratio_portrait = 0.80;
+  cfg->mfact = 0.50;
+  cfg->force_split = FORCE_SPLIT_AUTO;
+  cfg->new_status = NEW_STATUS_SLAVE;
+  cfg->single_window_aspect = 0.0;
+  cfg->smart_gaps = false;
+  cfg->inner_gap = 10;
+  cfg->outer_gap = 0;
+  cfg->enable_swallow = false;
   cfg->backend = BACKEND_AUTO;
+
+  autotile_add_swallow_term(cfg, "foot");
+  autotile_add_swallow_term(cfg, "alacritty");
+  autotile_add_swallow_term(cfg, "kitty");
+}
+
+void autotile_clear_swallow_terms(AutotileConfig *cfg) {
+  for (size_t i = 0; i < cfg->swallow_terminals_count; i++) {
+    free(cfg->swallow_terminals[i]);
+    cfg->swallow_terminals[i] = NULL;
+  }
+  cfg->swallow_terminals_count = 0;
+}
+
+bool autotile_add_swallow_term(AutotileConfig *cfg, const char *term) {
+  if (!term || !*term || cfg->swallow_terminals_count >= MAX_FILTER_ITEMS) return false;
+  cfg->swallow_terminals[cfg->swallow_terminals_count++] = strdup(term);
+  return true;
+}
+
+bool autotile_is_swallow_terminal(const AutotileConfig *cfg, const char *app_id) {
+  if (!app_id || !*app_id) return false;
+  for (size_t i = 0; i < cfg->swallow_terminals_count; i++) {
+    if (cfg->swallow_terminals[i] && strstr(app_id, cfg->swallow_terminals[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+double autotile_parse_aspect(const char *spec) {
+  if (!spec || !*spec || strcmp(spec, "0") == 0 || strcmp(spec, "off") == 0) return 0.0;
+  const char *sep = strchr(spec, ':');
+  if (!sep) sep = strchr(spec, ' ');
+  if (sep) {
+    double w = atof(spec);
+    double h = atof(sep + 1);
+    return (w > 0.0 && h > 0.0) ? (w / h) : 0.0;
+  }
+  double val = atof(spec);
+  return val > 0.0 ? val : 0.0;
 }
 
 void autotile_config_free(AutotileConfig *cfg) {
   for (size_t i = 0; i < cfg->outputs_count; i++) free(cfg->outputs[i]);
   for (size_t i = 0; i < cfg->workspaces_count; i++) free(cfg->workspaces[i]);
   for (size_t i = 0; i < cfg->events_count; i++) free(cfg->events[i]);
+  autotile_clear_swallow_terms(cfg);
+}
+
+static void parse_rule_actions(AutoFloatRule *rule, const char *actions) {
+  char buf[256];
+  snprintf(buf, sizeof(buf), "%s", actions);
+  char *saveptr = NULL;
+  for (char *tok = strtok_r(buf, ",", &saveptr); tok; tok = strtok_r(NULL, ",", &saveptr)) {
+    char *a = trim_local(tok);
+    if (strcmp(a, "float") == 0) {
+      rule->enable_float = true;
+    } else if (strcmp(a, "sticky") == 0) {
+      rule->sticky = true;
+    } else if (strcmp(a, "center") == 0) {
+      rule->center = true;
+    } else if (strncmp(a, "size ", 5) == 0) {
+      char w_tok[32] = "", h_tok[32] = "";
+      if (sscanf(a + 5, "%31s %31s", w_tok, h_tok) == 2) {
+        rule->size_w = atoi(w_tok);
+        rule->size_h = atoi(h_tok);
+        rule->size_percent = (strchr(w_tok, '%') != NULL || strchr(h_tok, '%') != NULL);
+      }
+    } else if (strncmp(a, "move ", 5) == 0) {
+      char x_tok[32] = "", y_tok[32] = "";
+      if (sscanf(a + 5, "%31s %31s", x_tok, y_tok) == 2) {
+        rule->move_x = atoi(x_tok);
+        rule->move_y = atoi(y_tok);
+        rule->move_percent = (strchr(x_tok, '%') != NULL || strchr(y_tok, '%') != NULL);
+        rule->has_move = true;
+      }
+    } else if (strncmp(a, "opacity ", 8) == 0) {
+      rule->opacity = atof(a + 8);
+    } else if (strncmp(a, "border ", 7) == 0) {
+      snprintf(rule->border_mode, sizeof(rule->border_mode), "%s", a);
+    }
+  }
 }
 
 bool autotile_add_float_rule(AutotileConfig *cfg, const char *spec) {
@@ -426,15 +616,30 @@ bool autotile_add_float_rule(AutotileConfig *cfg, const char *spec) {
   }
   AutoFloatRule *rule = &cfg->float_rules[cfg->float_rules_count++];
   memset(rule, 0, sizeof(*rule));
-  if (strncmp(spec, "app_id:", 7) == 0) {
+  rule->enable_float = true;
+
+  char match_buf[160];
+  const char *arrow = strstr(spec, "->");
+  if (arrow) {
+    size_t len = (size_t)(arrow - spec);
+    if (len >= sizeof(match_buf)) len = sizeof(match_buf) - 1;
+    memcpy(match_buf, spec, len);
+    match_buf[len] = '\\0';
+    parse_rule_actions(rule, arrow + 2);
+  } else {
+    snprintf(match_buf, sizeof(match_buf), "%s", spec);
+  }
+
+  char *trimmed = trim_local(match_buf);
+  if (strncmp(trimmed, "app_id:", 7) == 0) {
     rule->field = FLOAT_MATCH_APP_ID;
-    snprintf(rule->pattern, sizeof(rule->pattern), "%s", spec + 7);
-  } else if (strncmp(spec, "title:", 6) == 0) {
+    snprintf(rule->pattern, sizeof(rule->pattern), "%s", trimmed + 7);
+  } else if (strncmp(trimmed, "title:", 6) == 0) {
     rule->field = FLOAT_MATCH_TITLE;
-    snprintf(rule->pattern, sizeof(rule->pattern), "%s", spec + 6);
+    snprintf(rule->pattern, sizeof(rule->pattern), "%s", trimmed + 6);
   } else {
     rule->field = FLOAT_MATCH_ANY;
-    snprintf(rule->pattern, sizeof(rule->pattern), "%s", spec);
+    snprintf(rule->pattern, sizeof(rule->pattern), "%s", trimmed);
   }
   return true;
 }
@@ -456,6 +661,7 @@ bool autotile_add_ws_mode(AutotileConfig *cfg, const char *spec) {
   const char *mode_str = colon + 1;
   while (*mode_str == ' ') mode_str++;
   if (strcmp(mode_str, "master-stack") == 0) rule.mode = WS_MODE_MASTER_STACK;
+  else if (strcmp(mode_str, "center-master") == 0) rule.mode = WS_MODE_CENTER_MASTER;
   else if (strcmp(mode_str, "tabbed") == 0) rule.mode = WS_MODE_TABBED;
   else rule.mode = WS_MODE_DWINDLE;
 
@@ -488,21 +694,24 @@ static bool match_workspace_filter(
   return false;
 }
 
-static bool match_float_rules(const AutotileConfig *cfg, const FocusedContainer *focused) {
+static const AutoFloatRule *match_float_rules(
+  const AutotileConfig *cfg,
+  const FocusedContainer *focused
+) {
   for (size_t i = 0; i < cfg->float_rules_count; i++) {
     const AutoFloatRule *r = &cfg->float_rules[i];
     if (!r->pattern[0]) continue;
-    if (r->field == FLOAT_MATCH_APP_ID && strstr(focused->app_id, r->pattern)) return true;
-    if (r->field == FLOAT_MATCH_TITLE && strstr(focused->title, r->pattern)) return true;
+    if (r->field == FLOAT_MATCH_APP_ID && strstr(focused->app_id, r->pattern)) return r;
+    if (r->field == FLOAT_MATCH_TITLE && strstr(focused->title, r->pattern)) return r;
     if (r->field == FLOAT_MATCH_ANY &&
         (strstr(focused->app_id, r->pattern) || strstr(focused->title, r->pattern))) {
-      return true;
+      return r;
     }
   }
-  return false;
+  return NULL;
 }
 
-static WorkspaceLayoutMode resolve_ws_mode(
+WorkspaceLayoutMode autotile_resolve_ws_mode(
   const AutotileConfig *cfg,
   int ws_num,
   const char *ws_name
@@ -517,6 +726,84 @@ static WorkspaceLayoutMode resolve_ws_mode(
   return WS_MODE_DWINDLE;
 }
 
+static void append_cmd(char *dst, size_t dst_sz, const char *frag) {
+  if (!frag || !*frag) return;
+  size_t cur = strlen(dst);
+  if (cur > 0 && cur + 2 < dst_sz) {
+    strncat(dst, "; ", dst_sz - cur - 1);
+    cur = strlen(dst);
+  }
+  if (cur + 1 < dst_sz) {
+    strncat(dst, frag, dst_sz - cur - 1);
+  }
+}
+
+static void build_float_rule_cmd(const AutoFloatRule *r, char *out, size_t out_sz) {
+  char seg[128];
+  out[0] = '\\0';
+  if (r->enable_float) append_cmd(out, out_sz, "floating enable");
+  if (r->size_w > 0 && r->size_h > 0) {
+    if (r->size_percent) {
+      snprintf(seg, sizeof(seg), "resize set %d ppt %d ppt", r->size_w, r->size_h);
+    } else {
+      snprintf(seg, sizeof(seg), "resize set %d px %d px", r->size_w, r->size_h);
+    }
+    append_cmd(out, out_sz, seg);
+  }
+  if (r->center) {
+    append_cmd(out, out_sz, "move position center");
+  } else if (r->has_move) {
+    if (r->move_percent) {
+      snprintf(seg, sizeof(seg), "move position %d ppt %d ppt", r->move_x, r->move_y);
+    } else {
+      snprintf(seg, sizeof(seg), "move position %d px %d px", r->move_x, r->move_y);
+    }
+    append_cmd(out, out_sz, seg);
+  }
+  if (r->sticky) append_cmd(out, out_sz, "sticky enable");
+  if (r->opacity > 0.05 && r->opacity <= 1.0) {
+    snprintf(seg, sizeof(seg), "opacity %.2f", r->opacity);
+    append_cmd(out, out_sz, seg);
+  }
+  if (r->border_mode[0]) append_cmd(out, out_sz, r->border_mode);
+}
+
+static void append_gap_and_aspect_cmds(
+  const AutotileConfig *cfg,
+  const FocusedContainer *focused,
+  WorkspaceLayoutMode ws_mode,
+  char *aux,
+  size_t aux_sz
+) {
+  char seg[128];
+  int tiled = focused->ws_tiled_count;
+  if (cfg->smart_gaps) {
+    if (tiled <= 1 || ws_mode == WS_MODE_TABBED) {
+      append_cmd(aux, aux_sz, "gaps inner current set 0; gaps outer current set 0");
+    } else {
+      snprintf(seg, sizeof(seg), "gaps inner current set %d; gaps outer current set %d",
+               cfg->inner_gap, cfg->outer_gap);
+      append_cmd(aux, aux_sz, seg);
+    }
+  }
+
+  if (cfg->single_window_aspect > 0.0 && focused->output_width > 0 && focused->output_height > 0) {
+    double out_aspect = (double)focused->output_width / (double)focused->output_height;
+    if (tiled == 1 && out_aspect > cfg->single_window_aspect + 0.15) {
+      int target_w = (int)((double)focused->output_height * cfg->single_window_aspect + 0.5);
+      int horiz_gap = (focused->output_width - target_w) / 2;
+      if (horiz_gap > 0) {
+        snprintf(seg, sizeof(seg), "gaps horizontal current set %d", horiz_gap);
+        append_cmd(aux, aux_sz, seg);
+      }
+    } else if (tiled > 1) {
+      snprintf(seg, sizeof(seg), "gaps horizontal current set %d",
+               cfg->smart_gaps ? cfg->outer_gap : 0);
+      append_cmd(aux, aux_sz, seg);
+    }
+  }
+}
+
 SplitDecision autotile_evaluate_split(
   const AutotileConfig *cfg,
   const FocusedContainer *focused
@@ -525,6 +812,9 @@ SplitDecision autotile_evaluate_split(
     .direction = SPLIT_NONE,
     .command = NULL,
     .skip_reason = NULL,
+    .aux_command = "",
+    .resize_pct = 0,
+    .ws_mode = WS_MODE_DWINDLE,
   };
 
   if (cfg->paused) {
@@ -537,9 +827,15 @@ SplitDecision autotile_evaluate_split(
     return decision;
   }
 
-  if (!focused->floating && match_float_rules(cfg, focused)) {
+  WorkspaceLayoutMode ws_mode = autotile_resolve_ws_mode(
+    cfg, focused->workspace_num, focused->workspace_name);
+  decision.ws_mode = ws_mode;
+
+  const AutoFloatRule *matched_rule = match_float_rules(cfg, focused);
+  if (!focused->floating && matched_rule) {
     decision.direction = SPLIT_FLOAT_ENABLE;
     decision.command = "floating enable";
+    build_float_rule_cmd(matched_rule, decision.aux_command, sizeof(decision.aux_command));
     return decision;
   }
 
@@ -563,8 +859,8 @@ SplitDecision autotile_evaluate_split(
     return decision;
   }
 
-  WorkspaceLayoutMode ws_mode = resolve_ws_mode(
-    cfg, focused->workspace_num, focused->workspace_name);
+  append_gap_and_aspect_cmds(
+    cfg, focused, ws_mode, decision.aux_command, sizeof(decision.aux_command));
 
   if (ws_mode == WS_MODE_TABBED) {
     if (strcmp(focused->parent_layout, "tabbed") != 0) {
@@ -582,7 +878,8 @@ SplitDecision autotile_evaluate_split(
   }
 
   int effective_limit = cfg->limit;
-  if (ws_mode == WS_MODE_MASTER_STACK && (effective_limit == 0 || effective_limit > 2)) {
+  if ((ws_mode == WS_MODE_MASTER_STACK || ws_mode == WS_MODE_CENTER_MASTER) &&
+      (effective_limit == 0 || effective_limit > 2)) {
     effective_limit = 2;
   }
 
@@ -603,6 +900,12 @@ SplitDecision autotile_evaluate_split(
         : "container height below --splitheight";
     }
     return decision;
+  }
+
+  double diff = cfg->mfact - 0.50;
+  if (diff < 0.0) diff = -diff;
+  if (cfg->mfact > 0.1 && cfg->mfact < 0.9 && diff > 0.01) {
+    decision.resize_pct = (int)(cfg->mfact * 100.0 + 0.5);
   }
 
   double ratio = cfg->split_ratio > 0.0 ? cfg->split_ratio : 1.0;
@@ -712,7 +1015,24 @@ static bool parse_config_file(AutotileConfig *cfg, const char *path) {
       else if (strcmp(key, "split_ratio") == 0) cfg->split_ratio = atof(val);
       else if (strcmp(key, "split_ratio_landscape") == 0) cfg->split_ratio_landscape = atof(val);
       else if (strcmp(key, "split_ratio_portrait") == 0) cfg->split_ratio_portrait = atof(val);
-      else if (strcmp(key, "split_width") == 0) cfg->split_width = atoi(val);
+      else if (strcmp(key, "mfact") == 0) cfg->mfact = atof(val);
+      else if (strcmp(key, "force_split") == 0) {
+        if (strcmp(val, "left") == 0) cfg->force_split = FORCE_SPLIT_LEFT;
+        else if (strcmp(val, "right") == 0) cfg->force_split = FORCE_SPLIT_RIGHT;
+        else cfg->force_split = FORCE_SPLIT_AUTO;
+      } else if (strcmp(key, "new_status") == 0) {
+        cfg->new_status = (strcmp(val, "master") == 0) ? NEW_STATUS_MASTER : NEW_STATUS_SLAVE;
+      } else if (strcmp(key, "single_window_aspect") == 0) {
+        cfg->single_window_aspect = autotile_parse_aspect(val);
+      } else if (strcmp(key, "smart_gaps") == 0) {
+        cfg->smart_gaps = (strcmp(val, "true") == 0);
+      } else if (strcmp(key, "inner_gap") == 0) cfg->inner_gap = atoi(val);
+      else if (strcmp(key, "outer_gap") == 0) cfg->outer_gap = atoi(val);
+      else if (strcmp(key, "enable_swallow") == 0) cfg->enable_swallow = (strcmp(val, "true") == 0);
+      else if (strcmp(key, "swallow_terminals") == 0) {
+        autotile_clear_swallow_terms(cfg);
+        split_csv(val, cfg->swallow_terminals, &cfg->swallow_terminals_count, MAX_FILTER_ITEMS);
+      } else if (strcmp(key, "split_width") == 0) cfg->split_width = atoi(val);
       else if (strcmp(key, "split_height") == 0) cfg->split_height = atoi(val);
       else if (strcmp(key, "tabbed_on_min") == 0) cfg->tabbed_on_min = (strcmp(val, "true") == 0);
       else if (strcmp(key, "outputs") == 0) split_csv(val, cfg->outputs, &cfg->outputs_count, MAX_FILTER_ITEMS);
@@ -949,6 +1269,9 @@ static void push_dwindle_rect(
   int x, int y, int w, int h,
   uint32_t count,
   double split_ratio,
+  double mfact,
+  int gap,
+  ForceSplitSide force_split,
   int limit,
   int depth
 ) {
@@ -960,27 +1283,97 @@ static void push_dwindle_rect(
 
   bool at_limit = (limit > 0 && depth >= limit);
   double ratio = split_ratio > 0.0 ? split_ratio : 1.0;
+  double mf = (mfact > 0.1 && mfact < 0.9) ? mfact : 0.50;
   bool horizontal = ((double)h <= ((double)w / ratio));
 
   if (at_limit) {
-    int slice_h = h / (int)count;
+    int total_gap = gap * (int)(count - 1);
+    int slice_h = (h - total_gap) / (int)count;
     for (uint32_t i = 0; i < count; i++) {
-      int ch = (i == count - 1) ? (h - slice_h * (int)i) : slice_h;
-      river_layout_v3_push_view_dimensions(layout, x, y + slice_h * (int)i, w, ch, serial);
+      int ch = (i == count - 1) ? (h - (slice_h + gap) * (int)i) : slice_h;
+      river_layout_v3_push_view_dimensions(
+        layout, x, y + (slice_h + gap) * (int)i, w, ch > 40 ? ch : 40, serial);
     }
     return;
   }
 
   if (horizontal) {
-    int left_w = w / 2;
-    river_layout_v3_push_view_dimensions(layout, x, y, left_w, h, serial);
-    push_dwindle_rect(layout, serial, x + left_w, y, w - left_w, h,
-                      count - 1, split_ratio, limit, depth + 1);
+    int avail_w = w - gap;
+    int primary_w = (int)((double)avail_w * mf);
+    int secondary_w = avail_w - primary_w;
+    if (force_split == FORCE_SPLIT_LEFT) {
+      river_layout_v3_push_view_dimensions(layout, x + secondary_w + gap, y, primary_w, h, serial);
+      push_dwindle_rect(layout, serial, x, y, secondary_w, h,
+                        count - 1, split_ratio, mf, gap, force_split, limit, depth + 1);
+    } else {
+      river_layout_v3_push_view_dimensions(layout, x, y, primary_w, h, serial);
+      push_dwindle_rect(layout, serial, x + primary_w + gap, y, secondary_w, h,
+                        count - 1, split_ratio, mf, gap, force_split, limit, depth + 1);
+    }
   } else {
-    int top_h = h / 2;
-    river_layout_v3_push_view_dimensions(layout, x, y, w, top_h, serial);
-    push_dwindle_rect(layout, serial, x, y + top_h, w, h - top_h,
-                      count - 1, split_ratio, limit, depth + 1);
+    int avail_h = h - gap;
+    int primary_h = (int)((double)avail_h * mf);
+    int secondary_h = avail_h - primary_h;
+    if (force_split == FORCE_SPLIT_LEFT) {
+      river_layout_v3_push_view_dimensions(layout, x, y + secondary_h + gap, w, primary_h, serial);
+      push_dwindle_rect(layout, serial, x, y, w, secondary_h,
+                        count - 1, split_ratio, mf, gap, force_split, limit, depth + 1);
+    } else {
+      river_layout_v3_push_view_dimensions(layout, x, y, w, primary_h, serial);
+      push_dwindle_rect(layout, serial, x, y + primary_h + gap, w, secondary_h,
+                        count - 1, split_ratio, mf, gap, force_split, limit, depth + 1);
+    }
+  }
+}
+
+static void push_center_master_rects(
+  struct river_layout_v3 *layout,
+  uint32_t serial,
+  int x, int y, int w, int h,
+  uint32_t count,
+  double mfact,
+  int gap
+) {
+  if (count == 0) return;
+  if (count == 1) {
+    river_layout_v3_push_view_dimensions(layout, x, y, w, h, serial);
+    return;
+  }
+  double mf = (mfact > 0.1 && mfact < 0.9) ? mfact : 0.50;
+  if (count == 2) {
+    int mw = (int)((double)(w - gap) * mf);
+    river_layout_v3_push_view_dimensions(layout, x, y, mw, h, serial);
+    river_layout_v3_push_view_dimensions(layout, x + mw + gap, y, w - mw - gap, h, serial);
+    return;
+  }
+
+  int mw = (int)((double)(w - gap * 2) * mf);
+  int side_total = w - mw - gap * 2;
+  int left_w = side_total / 2;
+  int right_w = side_total - left_w;
+  int master_x = x + left_w + gap;
+  int right_x = master_x + mw + gap;
+
+  river_layout_v3_push_view_dimensions(layout, master_x, y, mw, h, serial);
+
+  uint32_t left_count = (count - 1 + 1) / 2;
+  uint32_t right_count = (count - 1) - left_count;
+
+  int lh = (h - gap * (int)(left_count - 1)) / (int)left_count;
+  int ry_step = right_count > 0 ? (h - gap * (int)(right_count - 1)) / (int)right_count : h;
+
+  uint32_t li = 0, ri = 0;
+  for (uint32_t i = 1; i < count; i++) {
+    if (i % 2 == 1) {
+      int ch = (li == left_count - 1) ? (h - (lh + gap) * (int)li) : lh;
+      river_layout_v3_push_view_dimensions(layout, x, y + (lh + gap) * (int)li, left_w, ch, serial);
+      li++;
+    } else {
+      int ch = (ri == right_count - 1) ? (h - (ry_step + gap) * (int)ri) : ry_step;
+      river_layout_v3_push_view_dimensions(
+        layout, right_x, y + (ry_step + gap) * (int)ri, right_w, ch, serial);
+      ri++;
+    }
   }
 }
 
@@ -1002,6 +1395,27 @@ static void river_layout_demand(
     return;
   }
 
+  int igap = (cfg->smart_gaps && view_count <= 1) ? 0 : cfg->inner_gap;
+  int ogap = (cfg->smart_gaps && view_count <= 1) ? 0 : cfg->outer_gap;
+
+  int x0 = ogap;
+  int y0 = ogap;
+  int w0 = (int)usable_width - ogap * 2;
+  int h0 = (int)usable_height - ogap * 2;
+  if (w0 < 100) w0 = (int)usable_width;
+  if (h0 < 100) h0 = (int)usable_height;
+
+  if (view_count == 1 && cfg->single_window_aspect > 0.0 && usable_height > 0) {
+    double out_aspect = (double)usable_width / (double)usable_height;
+    if (out_aspect > cfg->single_window_aspect + 0.15) {
+      int target_w = (int)((double)usable_height * cfg->single_window_aspect);
+      if (target_w > 0 && target_w < (int)usable_width) {
+        x0 = ((int)usable_width - target_w) / 2;
+        w0 = target_w;
+      }
+    }
+  }
+
   double ratio = cfg->split_ratio > 0.0 ? cfg->split_ratio : 1.0;
   if (usable_height > usable_width && cfg->split_ratio_portrait > 0.0) {
     ratio = cfg->split_ratio_portrait;
@@ -1009,10 +1423,19 @@ static void river_layout_demand(
     ratio = cfg->split_ratio_landscape;
   }
 
-  push_dwindle_rect(layout, serial, 0, 0, (int)usable_width, (int)usable_height,
-                    view_count, ratio, cfg->limit, 1);
+  WorkspaceLayoutMode mode = autotile_resolve_ws_mode(cfg, 1, "1");
+  if (mode == WS_MODE_CENTER_MASTER) {
+    push_center_master_rects(layout, serial, x0, y0, w0, h0, view_count, cfg->mfact, igap);
+    river_layout_v3_commit(layout, "autotiling-wl (center-master)", serial);
+    return;
+  }
 
-  const char *name = (cfg->limit == 2) ? "autotiling-wl (master-stack)" : "autotiling-wl (dwindle)";
+  push_dwindle_rect(layout, serial, x0, y0, w0, h0,
+                    view_count, ratio, cfg->mfact, igap, cfg->force_split, cfg->limit, 1);
+
+  const char *name = (cfg->limit == 2 || mode == WS_MODE_MASTER_STACK)
+    ? "autotiling-wl (master-stack)"
+    : "autotiling-wl (dwindle)";
   river_layout_v3_commit(layout, name, serial);
 }
 
@@ -1513,26 +1936,52 @@ const WlOutputInfo *wayland_ctx_active_output(const WaylandContext *ctx) {
     path: 'src/sway_ipc.h',
     language: 'c',
     category: 'Core',
-    summary: 'Sway/i3 IPC Unix domain socket client interface.',
+    summary: 'Sway/i3 IPC client interface with window event parsing, master promotion, and terminal swallow tracking.',
     content: `#ifndef AUTOTILING_WL_SWAY_IPC_H
 #define AUTOTILING_WL_SWAY_IPC_H
 
 #include "autotile.h"
 #include <stdbool.h>
+#include <stdint.h>
+
+#define MAX_SWALLOWED_CONTAINERS 32
+
+typedef struct {
+  int64_t parent_id;
+  int64_t child_id;
+  bool active;
+} SwallowEntry;
+
+typedef struct {
+  char change[32];
+  int64_t container_id;
+  int container_pid;
+  char app_id[128];
+  bool floating;
+} SwayWindowEvent;
 
 typedef struct {
   int event_fd;
   int cmd_fd;
   char socket_path[256];
   bool debug;
+  SwallowEntry swallowed[MAX_SWALLOWED_CONTAINERS];
 } SwayIpcClient;
 
 bool sway_ipc_connect(SwayIpcClient *client, bool debug);
 void sway_ipc_disconnect(SwayIpcClient *client);
 bool sway_ipc_subscribe(SwayIpcClient *client, const char *const *events, size_t count);
-bool sway_ipc_read_event(SwayIpcClient *client);
+bool sway_ipc_read_event(SwayIpcClient *client, SwayWindowEvent *out_ev);
 bool sway_ipc_get_focused(SwayIpcClient *client, FocusedContainer *out_focused);
 bool sway_ipc_run_command(SwayIpcClient *client, const char *cmd);
+void sway_ipc_handle_window_event(
+  SwayIpcClient *client,
+  const AutotileConfig *cfg,
+  const SwayWindowEvent *ev,
+  const FocusedContainer *prev_focused,
+  const FocusedContainer *cur_focused,
+  const SplitDecision *decision
+);
 
 #endif /* AUTOTILING_WL_SWAY_IPC_H */
 `,
@@ -1541,7 +1990,7 @@ bool sway_ipc_run_command(SwayIpcClient *client, const char *cmd);
     path: 'src/sway_ipc.c',
     language: 'c',
     category: 'Core',
-    summary: 'Binary Sway IPC client extracting app_id, title, output rect, depth, and executing split/tabbed/floating commands.',
+    summary: 'Binary Sway IPC client with tree inspection, rich rule execution, force_split, new_status=master, and /proc PPID terminal swallowing.',
     content: `#include "sway_ipc.h"
 
 #include <errno.h>
@@ -1675,12 +2124,68 @@ bool sway_ipc_subscribe(SwayIpcClient *client, const char *const *events, size_t
   return reply != NULL;
 }
 
-bool sway_ipc_read_event(SwayIpcClient *client) {
+bool sway_ipc_read_event(SwayIpcClient *client, SwayWindowEvent *out_ev) {
   uint32_t ev_type = 0;
   char *payload = recv_ipc_packet(client->event_fd, &ev_type);
   if (!payload) return false;
+
+  if (out_ev) {
+    memset(out_ev, 0, sizeof(*out_ev));
+    struct json_object *root = json_tokener_parse(payload);
+    if (root) {
+      struct json_object *chg_obj = NULL, *con_obj = NULL;
+      if (json_object_object_get_ex(root, "change", &chg_obj)) {
+        const char *chg = json_object_get_string(chg_obj);
+        if (chg) snprintf(out_ev->change, sizeof(out_ev->change), "%s", chg);
+      }
+      if (json_object_object_get_ex(root, "container", &con_obj)) {
+        struct json_object *v = NULL;
+        if (json_object_object_get_ex(con_obj, "id", &v)) {
+          out_ev->container_id = json_object_get_int64(v);
+        }
+        if (json_object_object_get_ex(con_obj, "pid", &v)) {
+          out_ev->container_pid = json_object_get_int(v);
+        }
+        if (json_object_object_get_ex(con_obj, "app_id", &v) && json_object_get_string(v)) {
+          snprintf(out_ev->app_id, sizeof(out_ev->app_id), "%s", json_object_get_string(v));
+        }
+        if (json_object_object_get_ex(con_obj, "floating", &v)) {
+          const char *fl = json_object_get_string(v);
+          out_ev->floating = (fl && (strcmp(fl, "user_on") == 0 || strcmp(fl, "auto_on") == 0));
+        }
+      }
+      json_object_put(root);
+    }
+  }
+
   free(payload);
   return true;
+}
+
+static int count_workspace_tiled_windows(struct json_object *node) {
+  int count = 0;
+  struct json_object *children = NULL;
+  if (json_object_object_get_ex(node, "nodes", &children) &&
+      json_object_is_type(children, json_type_array)) {
+    size_t n = json_object_array_length(children);
+    for (size_t i = 0; i < n; i++) {
+      struct json_object *child = json_object_array_get_idx(children, i);
+      struct json_object *sub = NULL;
+      bool has_sub = json_object_object_get_ex(child, "nodes", &sub) &&
+                     json_object_is_type(sub, json_type_array) &&
+                     json_object_array_length(sub) > 0;
+      if (has_sub) {
+        count += count_workspace_tiled_windows(child);
+      } else {
+        struct json_object *pid_obj = NULL;
+        if (json_object_object_get_ex(child, "pid", &pid_obj) &&
+            json_object_get_int(pid_obj) > 0) {
+          count++;
+        }
+      }
+    }
+  }
+  return count;
 }
 
 static bool find_focused_recursive(
@@ -1691,6 +2196,7 @@ static bool find_focused_recursive(
   int out_h,
   const char *ws_name,
   int ws_num,
+  int ws_tiled_count,
   int depth,
   FocusedContainer *out
 ) {
@@ -1714,6 +2220,7 @@ static bool find_focused_recursive(
     struct json_object *name_obj = NULL, *num_obj = NULL;
     if (json_object_object_get_ex(node, "name", &name_obj)) ws_name = json_object_get_string(name_obj);
     if (json_object_object_get_ex(node, "num", &num_obj)) ws_num = json_object_get_int(num_obj);
+    ws_tiled_count = count_workspace_tiled_windows(node);
     depth = 0;
   } else if (strcmp(node_type, "con") == 0 || strcmp(node_type, "floating_con") == 0) {
     depth++;
@@ -1727,12 +2234,15 @@ static bool find_focused_recursive(
     memset(out, 0, sizeof(*out));
     out->depth = depth;
     out->workspace_num = ws_num;
+    out->ws_tiled_count = ws_tiled_count;
     out->output_width = out_w;
     out->output_height = out_h;
     snprintf(out->output_name, sizeof(out->output_name), "%s", output_name ? output_name : "");
     snprintf(out->workspace_name, sizeof(out->workspace_name), "%s", ws_name ? ws_name : "");
 
-    struct json_object *app_obj = NULL, *title_obj = NULL, *rect_obj = NULL;
+    struct json_object *v = NULL, *app_obj = NULL, *title_obj = NULL, *rect_obj = NULL;
+    if (json_object_object_get_ex(node, "id", &v)) out->id = json_object_get_int64(v);
+    if (json_object_object_get_ex(node, "pid", &v)) out->pid = json_object_get_int(v);
     if (json_object_object_get_ex(node, "app_id", &app_obj) && json_object_get_string(app_obj)) {
       snprintf(out->app_id, sizeof(out->app_id), "%s", json_object_get_string(app_obj));
     }
@@ -1740,7 +2250,6 @@ static bool find_focused_recursive(
       snprintf(out->title, sizeof(out->title), "%s", json_object_get_string(title_obj));
     }
     if (json_object_object_get_ex(node, "rect", &rect_obj)) {
-      struct json_object *v = NULL;
       if (json_object_object_get_ex(rect_obj, "x", &v)) out->rect.x = json_object_get_int(v);
       if (json_object_object_get_ex(rect_obj, "y", &v)) out->rect.y = json_object_get_int(v);
       if (json_object_object_get_ex(rect_obj, "width", &v)) out->rect.width = json_object_get_int(v);
@@ -1779,7 +2288,7 @@ static bool find_focused_recursive(
       for (size_t i = 0; i < n; i++) {
         struct json_object *child = json_object_array_get_idx(children, i);
         if (find_focused_recursive(child, node, output_name, out_w, out_h,
-                                   ws_name, ws_num, depth, out)) {
+                                   ws_name, ws_num, ws_tiled_count, depth, out)) {
           return true;
         }
       }
@@ -1795,16 +2304,131 @@ bool sway_ipc_get_focused(SwayIpcClient *client, FocusedContainer *out_focused) 
   struct json_object *root = json_tokener_parse(tree_json);
   free(tree_json);
   if (!root) return false;
-  bool found = find_focused_recursive(root, NULL, "", 0, 0, "", -1, 0, out_focused);
+  bool found = find_focused_recursive(root, NULL, "", 0, 0, "", -1, 0, 0, out_focused);
   json_object_put(root);
   return found;
 }
 
 bool sway_ipc_run_command(SwayIpcClient *client, const char *cmd) {
+  if (!cmd || !*cmd) return true;
   if (!send_ipc_packet(client->cmd_fd, IPC_RUN_COMMAND, cmd)) return false;
   char *reply = recv_ipc_packet(client->cmd_fd, NULL);
   free(reply);
   return reply != NULL;
+}
+
+static int read_ppid_from_proc(int pid) {
+  if (pid <= 1) return 0;
+  char path[64];
+  snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+  FILE *fp = fopen(path, "r");
+  if (!fp) return 0;
+  char buf[512];
+  size_t n = fread(buf, 1, sizeof(buf) - 1, fp);
+  fclose(fp);
+  if (n == 0) return 0;
+  buf[n] = '\\0';
+  char *rparen = strrchr(buf, ')');
+  if (!rparen) return 0;
+  char state = 0;
+  int ppid = 0;
+  if (sscanf(rparen + 2, "%c %d", &state, &ppid) == 2) return ppid;
+  return 0;
+}
+
+static bool pid_is_descendant_of(int child_pid, int ancestor_pid) {
+  if (child_pid <= 1 || ancestor_pid <= 1 || child_pid == ancestor_pid) return false;
+  int cur = child_pid;
+  for (int hop = 0; hop < 8 && cur > 1; hop++) {
+    int ppid = read_ppid_from_proc(cur);
+    if (ppid <= 1) break;
+    if (ppid == ancestor_pid) return true;
+    cur = ppid;
+  }
+  return false;
+}
+
+void sway_ipc_handle_window_event(
+  SwayIpcClient *client,
+  const AutotileConfig *cfg,
+  const SwayWindowEvent *ev,
+  const FocusedContainer *prev_focused,
+  const FocusedContainer *cur_focused,
+  const SplitDecision *decision
+) {
+  if (!ev || !ev->change[0]) return;
+  char cmd[512];
+
+  if (cfg->enable_swallow && strcmp(ev->change, "new") == 0 &&
+      prev_focused && prev_focused->pid > 0 && !prev_focused->floating &&
+      !ev->floating &&
+      autotile_is_swallow_terminal(cfg, prev_focused->app_id) &&
+      !autotile_is_swallow_terminal(cfg, ev->app_id) &&
+      pid_is_descendant_of(ev->container_pid, prev_focused->pid)) {
+    for (size_t i = 0; i < MAX_SWALLOWED_CONTAINERS; i++) {
+      if (!client->swallowed[i].active) {
+        client->swallowed[i].active = true;
+        client->swallowed[i].parent_id = prev_focused->id;
+        client->swallowed[i].child_id = ev->container_id;
+        snprintf(cmd, sizeof(cmd),
+                 "[con_id=%lld] mark _swallowed_%lld, move scratchpad",
+                 (long long)prev_focused->id, (long long)ev->container_id);
+        sway_ipc_run_command(client, cmd);
+        if (client->debug) {
+          fprintf(stderr, "[swallow] hid terminal %lld behind child %lld\\n",
+                  (long long)prev_focused->id, (long long)ev->container_id);
+        }
+        break;
+      }
+    }
+  } else if (strcmp(ev->change, "close") == 0) {
+    for (size_t i = 0; i < MAX_SWALLOWED_CONTAINERS; i++) {
+      if (client->swallowed[i].active && client->swallowed[i].child_id == ev->container_id) {
+        snprintf(cmd, sizeof(cmd),
+                 "[con_mark=\\"_swallowed_%lld\\"] scratchpad show, floating disable, unmark _swallowed_%lld",
+                 (long long)ev->container_id, (long long)ev->container_id);
+        sway_ipc_run_command(client, cmd);
+        client->swallowed[i].active = false;
+        if (client->debug) {
+          fprintf(stderr, "[swallow] restored terminal after child %lld closed\\n",
+                  (long long)ev->container_id);
+        }
+        break;
+      }
+    }
+  }
+
+  if (strcmp(ev->change, "new") == 0 && cur_focused && !cur_focused->floating && decision) {
+    if (cfg->force_split == FORCE_SPLIT_LEFT) {
+      sway_ipc_run_command(
+        client,
+        strcmp(cur_focused->parent_layout, "splitv") == 0 ? "move up" : "move left");
+    }
+
+    if (decision->resize_pct > 0) {
+      int slave_pct = 100 - decision->resize_pct;
+      if (strcmp(cur_focused->parent_layout, "splitv") == 0) {
+        snprintf(cmd, sizeof(cmd), "resize set height %d ppt", slave_pct);
+      } else {
+        snprintf(cmd, sizeof(cmd), "resize set width %d ppt", slave_pct);
+      }
+      sway_ipc_run_command(client, cmd);
+    }
+
+    if (cfg->new_status == NEW_STATUS_MASTER &&
+        (decision->ws_mode == WS_MODE_MASTER_STACK ||
+         decision->ws_mode == WS_MODE_CENTER_MASTER)) {
+      if (cur_focused->ws_tiled_count <= 1) {
+        snprintf(cmd, sizeof(cmd), "mark _autotile_master_%d", cur_focused->workspace_num);
+        sway_ipc_run_command(client, cmd);
+      } else {
+        snprintf(cmd, sizeof(cmd),
+                 "swap container with mark _autotile_master_%d; mark _autotile_master_%d",
+                 cur_focused->workspace_num, cur_focused->workspace_num);
+        sway_ipc_run_command(client, cmd);
+      }
+    }
+  }
 }
 `,
   },
@@ -1812,7 +2436,7 @@ bool sway_ipc_run_command(SwayIpcClient *client, const char *cmd) {
     path: 'src/main.c',
     language: 'c',
     category: 'Core',
-    summary: 'Main daemon entrypoint with SIGUSR1 pause toggle, config loader, --init-config, systemd watchdog poll, River + Sway + Wayland event loop.',
+    summary: 'Main daemon entrypoint with SIGUSR1 pause, config loader, Hyprland-style CLI options, systemd watchdog poll, and River/Sway/Wayland event loop.',
     content: `#include "autotile.h"
 #include "config.h"
 #include "sd_notify.h"
@@ -1846,23 +2470,32 @@ static void print_usage(const char *prog) {
     "Usage: %s [OPTIONS]\\n\\n"
     "Wayland-native dwindle & autotiling daemon for Sway, River, and wlroots.\\n\\n"
     "Options:\\n"
-    "  -h, --help                    Show this help message and exit\\n"
-    "  -d, --debug                   Print debug messages to stderr\\n"
-    "  -v, --version                 Display version information\\n"
-    "  -c, --config PATH             Load config file from PATH\\n"
-    "      --init-config             Copy base config to ~/.config/autotiling-wl/config\\n"
-    "  -o, --outputs OUT...          Restrict autotiling to specified output names\\n"
-    "  -w, --workspaces WS...        Restrict autotiling to specified workspace numbers\\n"
-    "  -l, --limit N                 Max split depth (0 = dwindle default, 2 = master-stack)\\n"
-    "  -sw, --splitwidth PX          Minimum container width threshold\\n"
-    "  -sh, --splitheight PX         Minimum container height threshold\\n"
-    "  -sr, --splitratio R           Height/width ratio multiplier (default: 1.0)\\n"
-    "      --splitratio-portrait R   Split ratio when monitor height > width\\n"
-    "      --tabbed-on-min           Fallback to layout tabbed when below min thresholds\\n"
-    "      --float-rule RULE         Auto-float rule (app_id:foo or title:bar)\\n"
-    "      --ws-layout WS:MODE       Workspace layout mode (dwindle|master-stack|tabbed)\\n"
-    "  -e, --events EV...            Sway IPC events to subscribe to (default: window)\\n"
-    "      --backend MODE            auto | sway | river | wlroots (default: auto)\\n",
+    "  -h, --help                      Show this help message and exit\\n"
+    "  -d, --debug                     Print debug messages to stderr\\n"
+    "  -v, --version                   Display version information\\n"
+    "  -c, --config PATH               Load config file from PATH\\n"
+    "      --init-config               Copy base config to ~/.config/autotiling-wl/config\\n"
+    "  -o, --outputs OUT...            Restrict autotiling to specified output names\\n"
+    "  -w, --workspaces WS...          Restrict autotiling to specified workspace numbers\\n"
+    "  -l, --limit N                   Max split depth (0 = dwindle default, 2 = master-stack)\\n"
+    "  -sw, --splitwidth PX            Minimum container width threshold\\n"
+    "  -sh, --splitheight PX           Minimum container height threshold\\n"
+    "  -sr, --splitratio R             Height/width direction ratio multiplier (default: 1.0)\\n"
+    "      --splitratio-portrait R     Split ratio when monitor height > width\\n"
+    "      --mfact R                   Master/primary split proportion 0.1-0.9 (default: 0.50)\\n"
+    "      --force-split SIDE          Split placement side: auto | left | right\\n"
+    "      --new-status MODE           Master placement for new windows: slave | master\\n"
+    "      --single-window-aspect W:H  Center solo window on ultrawide (e.g. 16:9, 0 = off)\\n"
+    "      --smart-gaps                Collapse gaps when <= 1 tiled window is open\\n"
+    "      --inner-gap PX              Inner gap pixels for multi-window workspaces (default: 10)\\n"
+    "      --outer-gap PX              Outer gap pixels for multi-window workspaces (default: 0)\\n"
+    "      --swallow                   Enable terminal swallowing via /proc PPID chain\\n"
+    "      --swallow-term LIST         Comma-separated terminal app_ids (foot,alacritty,kitty)\\n"
+    "      --tabbed-on-min             Fallback to layout tabbed when below min thresholds\\n"
+    "      --float-rule RULE           Window rule (app_id:foo [-> float, sticky, size 55%% 65%%, center])\\n"
+    "      --ws-layout WS:MODE         Workspace mode (dwindle|master-stack|center-master|tabbed)\\n"
+    "  -e, --events EV...              Sway IPC events to subscribe to (default: window)\\n"
+    "      --backend MODE              auto | sway | river | wlroots (default: auto)\\n",
     prog
   );
 }
@@ -1885,21 +2518,47 @@ static void collect_variadic(int argc, char **argv, char **dest, size_t *count, 
   }
 }
 
-static void process_sway_focus(const AutotileConfig *cfg, SwayIpcClient *ipc) {
+static void process_sway_focus(
+  const AutotileConfig *cfg,
+  SwayIpcClient *ipc,
+  const SwayWindowEvent *ev,
+  const FocusedContainer *prev_focused,
+  FocusedContainer *cur_focused,
+  bool *has_cur
+) {
   FocusedContainer focused;
-  if (!sway_ipc_get_focused(ipc, &focused)) return;
+  if (!sway_ipc_get_focused(ipc, &focused)) {
+    if (has_cur) *has_cur = false;
+    return;
+  }
+  if (cur_focused) *cur_focused = focused;
+  if (has_cur) *has_cur = true;
 
   SplitDecision decision = autotile_evaluate_split(cfg, &focused);
-  if (decision.direction != SPLIT_NONE && decision.command) {
+  if (ev) {
+    sway_ipc_handle_window_event(ipc, cfg, ev, prev_focused, &focused, &decision);
+  }
+
+  if (decision.aux_command[0]) {
+    sway_ipc_run_command(ipc, decision.aux_command);
+  } else if (decision.direction != SPLIT_NONE && decision.command) {
     sway_ipc_run_command(ipc, decision.command);
-    if (cfg->debug) {
-      fprintf(stderr, "[autotile] %s (app=%s %dx%d depth=%d ws=%s out=%s)\\n",
+  }
+
+  if (decision.direction != SPLIT_NONE && decision.direction != SPLIT_FLOAT_ENABLE &&
+      decision.command && decision.aux_command[0]) {
+    sway_ipc_run_command(ipc, decision.command);
+  }
+
+  if (cfg->debug) {
+    if (decision.direction != SPLIT_NONE && decision.command) {
+      fprintf(stderr, "[autotile] %s (app=%s %dx%d depth=%d tiled=%d ws=%s out=%s)\\n",
               decision.command, focused.app_id, focused.rect.width,
-              focused.rect.height, focused.depth, focused.workspace_name,
-              focused.output_name);
+              focused.rect.height, focused.depth, focused.ws_tiled_count,
+              focused.workspace_name, focused.output_name);
+    } else if (decision.skip_reason) {
+      fprintf(stderr, "[autotile] skip: %s\\n", decision.skip_reason);
     }
-  } else if (cfg->debug && decision.skip_reason) {
-    fprintf(stderr, "[autotile] skip: %s\\n", decision.skip_reason);
   }
 }
 
@@ -1929,26 +2588,44 @@ int main(int argc, char **argv) {
     OPT_TABBED_ON_MIN,
     OPT_FLOAT_RULE,
     OPT_WS_LAYOUT,
+    OPT_MFACT,
+    OPT_FORCE_SPLIT,
+    OPT_NEW_STATUS,
+    OPT_SINGLE_ASPECT,
+    OPT_SMART_GAPS,
+    OPT_INNER_GAP,
+    OPT_OUTER_GAP,
+    OPT_SWALLOW,
+    OPT_SWALLOW_TERM,
   };
 
   static const struct option long_opts[] = {
-    {"help",                no_argument,       NULL, 'h'},
-    {"debug",               no_argument,       NULL, 'd'},
-    {"version",             no_argument,       NULL, 'v'},
-    {"config",              required_argument, NULL, 'c'},
-    {"init-config",         no_argument,       NULL, OPT_INIT_CONFIG},
-    {"outputs",             required_argument, NULL, 'o'},
-    {"workspaces",          required_argument, NULL, 'w'},
-    {"limit",               required_argument, NULL, 'l'},
-    {"splitwidth",          required_argument, NULL, 'W'},
-    {"splitheight",         required_argument, NULL, 'H'},
-    {"splitratio",          required_argument, NULL, 'R'},
-    {"splitratio-portrait", required_argument, NULL, OPT_RATIO_PORTRAIT},
-    {"tabbed-on-min",       no_argument,       NULL, OPT_TABBED_ON_MIN},
-    {"float-rule",          required_argument, NULL, OPT_FLOAT_RULE},
-    {"ws-layout",           required_argument, NULL, OPT_WS_LAYOUT},
-    {"events",              required_argument, NULL, 'e'},
-    {"backend",             required_argument, NULL, OPT_BACKEND},
+    {"help",                 no_argument,       NULL, 'h'},
+    {"debug",                no_argument,       NULL, 'd'},
+    {"version",              no_argument,       NULL, 'v'},
+    {"config",               required_argument, NULL, 'c'},
+    {"init-config",          no_argument,       NULL, OPT_INIT_CONFIG},
+    {"outputs",              required_argument, NULL, 'o'},
+    {"workspaces",           required_argument, NULL, 'w'},
+    {"limit",                required_argument, NULL, 'l'},
+    {"splitwidth",           required_argument, NULL, 'W'},
+    {"splitheight",          required_argument, NULL, 'H'},
+    {"splitratio",           required_argument, NULL, 'R'},
+    {"splitratio-portrait",  required_argument, NULL, OPT_RATIO_PORTRAIT},
+    {"mfact",                required_argument, NULL, OPT_MFACT},
+    {"force-split",          required_argument, NULL, OPT_FORCE_SPLIT},
+    {"new-status",           required_argument, NULL, OPT_NEW_STATUS},
+    {"single-window-aspect", required_argument, NULL, OPT_SINGLE_ASPECT},
+    {"smart-gaps",           no_argument,       NULL, OPT_SMART_GAPS},
+    {"inner-gap",            required_argument, NULL, OPT_INNER_GAP},
+    {"outer-gap",            required_argument, NULL, OPT_OUTER_GAP},
+    {"swallow",              no_argument,       NULL, OPT_SWALLOW},
+    {"swallow-term",         required_argument, NULL, OPT_SWALLOW_TERM},
+    {"tabbed-on-min",        no_argument,       NULL, OPT_TABBED_ON_MIN},
+    {"float-rule",           required_argument, NULL, OPT_FLOAT_RULE},
+    {"ws-layout",            required_argument, NULL, OPT_WS_LAYOUT},
+    {"events",               required_argument, NULL, 'e'},
+    {"backend",              required_argument, NULL, OPT_BACKEND},
     {NULL, 0, NULL, 0},
   };
 
@@ -1979,6 +2656,33 @@ int main(int argc, char **argv) {
       case 'H': cfg.split_height = atoi(optarg); break;
       case 'R': cfg.split_ratio = atof(optarg); break;
       case OPT_RATIO_PORTRAIT: cfg.split_ratio_portrait = atof(optarg); break;
+      case OPT_MFACT: cfg.mfact = atof(optarg); break;
+      case OPT_FORCE_SPLIT:
+        if (strcmp(optarg, "left") == 0) cfg.force_split = FORCE_SPLIT_LEFT;
+        else if (strcmp(optarg, "right") == 0) cfg.force_split = FORCE_SPLIT_RIGHT;
+        else cfg.force_split = FORCE_SPLIT_AUTO;
+        break;
+      case OPT_NEW_STATUS:
+        cfg.new_status = (strcmp(optarg, "master") == 0) ? NEW_STATUS_MASTER : NEW_STATUS_SLAVE;
+        break;
+      case OPT_SINGLE_ASPECT: cfg.single_window_aspect = autotile_parse_aspect(optarg); break;
+      case OPT_SMART_GAPS: cfg.smart_gaps = true; break;
+      case OPT_INNER_GAP: cfg.inner_gap = atoi(optarg); break;
+      case OPT_OUTER_GAP: cfg.outer_gap = atoi(optarg); break;
+      case OPT_SWALLOW: cfg.enable_swallow = true; break;
+      case OPT_SWALLOW_TERM: {
+        autotile_clear_swallow_terms(&cfg);
+        char *dup = strdup(optarg);
+        if (dup) {
+          char *tok = strtok(dup, ",");
+          while (tok) {
+            autotile_add_swallow_term(&cfg, tok);
+            tok = strtok(NULL, ",");
+          }
+          free(dup);
+        }
+        break;
+      }
       case OPT_TABBED_ON_MIN: cfg.tabbed_on_min = true; break;
       case OPT_FLOAT_RULE: autotile_add_float_rule(&cfg, optarg); break;
       case OPT_WS_LAYOUT: autotile_add_ws_mode(&cfg, optarg); break;
@@ -2017,8 +2721,11 @@ int main(int argc, char **argv) {
     use_sway = sway_ipc_subscribe(&ipc, (const char *const *)cfg.events, cfg.events_count);
   }
 
+  FocusedContainer last_focused = {0};
+  bool has_last_focused = false;
+
   if (use_sway) {
-    process_sway_focus(&cfg, &ipc);
+    process_sway_focus(&cfg, &ipc, NULL, NULL, &last_focused, &has_last_focused);
     sd_notify_ready("Active (Sway IPC + Wayland dwindle)");
   } else if (wl.river.active) {
     sd_notify_ready("Active (river-layout-v3 dwindle)");
@@ -2043,7 +2750,7 @@ int main(int argc, char **argv) {
                 cfg.paused ? "PAUSED" : "RESUMED");
       }
       if (!cfg.paused && use_sway) {
-        process_sway_focus(&cfg, &ipc);
+        process_sway_focus(&cfg, &ipc, NULL, NULL, &last_focused, &has_last_focused);
       }
     }
 
@@ -2062,13 +2769,19 @@ int main(int argc, char **argv) {
       if (!wayland_ctx_dispatch(&wl)) break;
       if (wl.hotplug_event) {
         wl.hotplug_event = false;
-        if (use_sway) process_sway_focus(&cfg, &ipc);
+        if (use_sway) {
+          process_sway_focus(&cfg, &ipc, NULL, NULL, &last_focused, &has_last_focused);
+        }
       }
     }
 
     if (use_sway && (fds[1].revents & POLLIN)) {
-      if (!sway_ipc_read_event(&ipc)) break;
-      process_sway_focus(&cfg, &ipc);
+      SwayWindowEvent ev;
+      if (!sway_ipc_read_event(&ipc, &ev)) break;
+      FocusedContainer prev_copy = last_focused;
+      process_sway_focus(
+        &cfg, &ipc, &ev, has_last_focused ? &prev_copy : NULL,
+        &last_focused, &has_last_focused);
     }
   }
 
@@ -2272,41 +2985,169 @@ auto-float rules, per-workspace layout modes, and native sd_notify support.
 `,
   },
   {
+    path: 'packaging/debian/control',
+    language: 'debian',
+    category: 'Packaging',
+    summary: 'Debian/Ubuntu control metadata declaring debhelper-compat, Meson, Wayland, and json-c build dependencies.',
+    content: `Source: autotiling-wl
+Section: x11
+Priority: optional
+Maintainer: Maintainer <maintainer@example.org>
+Rules-Requires-Root: no
+Build-Depends:
+ debhelper-compat (= 13),
+ libjson-c-dev (>= 0.17),
+ libwayland-bin,
+ libwayland-dev (>= 1.22.0),
+ meson (>= 0.63),
+ ninja-build,
+ pkgconf | pkg-config,
+ wayland-protocols (>= 1.36)
+Standards-Version: 4.7.0
+Homepage: https://github.com/example/autotiling-wl
+
+Package: autotiling-wl
+Architecture: any
+Depends: \${shlibs:Depends}, \${misc:Depends}
+Recommends: sway | river
+Description: Wayland-native dwindle & autotiling daemon for Sway, River, and wlroots
+ A C17 rebuild of autotiling with recursive dwindle layout by default,
+ modern Wayland protocols (ext-workspace-v1, ext-foreign-toplevel-list-v1,
+ xdg-output-unstable-v1, wlr-foreign-toplevel-management, river-layout-v3),
+ auto-float rules, per-workspace layout modes, and native sd_notify support.
+`,
+  },
+  {
+    path: 'packaging/debian/rules',
+    language: 'debian',
+    category: 'Packaging',
+    summary: 'Debian debhelper rules building autotiling-wl with Meson and disabling compat symlink.',
+    content: `#!/usr/bin/make -f
+
+%:
+\tdh $@ --buildsystem=meson
+
+override_dh_auto_configure:
+\tdh_auto_configure -- -Dcompat_symlink=false
+`,
+  },
+  {
+    path: 'packaging/debian/changelog',
+    language: 'debian',
+    category: 'Packaging',
+    summary: 'Debian package changelog for autotiling-wl 1.1.0-1.',
+    content: `autotiling-wl (1.1.0-1) unstable; urgency=medium
+
+  * Release 1.1.0 with dwindle default, auto-float rules, per-workspace modes,
+    River layout support, SIGUSR1 toggle, sd_notify, base config, and man page.
+
+ -- Maintainer <maintainer@example.org>  Sun, 22 Nov 2026 12:00:00 +0000
+`,
+  },
+  {
+    path: 'packaging/arch/PKGBUILD',
+    language: 'shell',
+    category: 'Packaging',
+    summary: 'Arch Linux PKGBUILD using meson/ninja and systemd user unit packaging.',
+    content: `# Maintainer: Maintainer <maintainer@example.org>
+pkgname=autotiling-wl
+pkgver=1.1.0
+pkgrel=1
+pkgdesc='Wayland-native dwindle & autotiling daemon for Sway, River, and wlroots'
+arch=('x86_64' 'aarch64')
+url='https://github.com/example/autotiling-wl'
+license=('GPL-3.0-or-later')
+depends=('wayland' 'json-c')
+makedepends=('meson' 'ninja' 'pkgconf' 'wayland-protocols')
+optdepends=(
+  'sway: Sway IPC autotiling integration'
+  'river: River river-layout-v3 integration'
+)
+source=("\${pkgname}-\${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  arch-meson "\${pkgname}-\${pkgver}" build -Dcompat_symlink=false
+  meson compile -C build
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+}
+`,
+  },
+  {
+    path: 'packaging/void/template',
+    language: 'shell',
+    category: 'Packaging',
+    summary: 'Void Linux xbps-src template building autotiling-wl via Meson.',
+    content: `# Template file for 'autotiling-wl'
+pkgname=autotiling-wl
+version=1.1.0
+revision=1
+build_style=meson
+configure_args="-Dcompat_symlink=false"
+hostmakedepends="pkg-config wayland-devel"
+makedepends="wayland-devel wayland-protocols json-c-devel"
+short_desc="Wayland-native dwindle & autotiling daemon for Sway, River, and wlroots"
+maintainer="Maintainer <maintainer@example.org>"
+license="GPL-3.0-or-later"
+homepage="https://github.com/example/autotiling-wl"
+distfiles="https://github.com/example/autotiling-wl/archive/refs/tags/v\${version}.tar.gz"
+checksum=0000000000000000000000000000000000000000000000000000000000000000
+`,
+  },
+  {
     path: 'README.md',
     language: 'markdown',
     category: 'Docs & Config',
-    summary: 'User-ready GitHub README covering features, Fedora installation, configuration, and Sway/River setup.',
+    summary: 'User-ready GitHub README covering features, Fedora/Debian/Arch/Void installation, GitHub Pages docs, configuration, and Sway/River setup.',
     content: `# autotiling-wl
 
 Automatic window tiling for **Sway**, **River**, and modern **wlroots** Wayland compositors.
 
-\`autotiling-wl\` automatically switches split direction based on the shape of your focused window to create a **dwindle** layout by default, while keeping drop-in compatibility with original \`autotiling\` flags and configs.
+\`autotiling-wl\` automatically switches split direction based on the shape of your focused window to create a **dwindle** layout by default, while adding Hyprland-inspired ergonomics and keeping drop-in compatibility with original \`autotiling\` flags.
 
 ## Features
 
 - **Dwindle layout by default**: Splits windows recursively along their longest edge without requiring manual split shortcuts.
-- **Optional master-stack cap**: Limit split depth with \`--limit 2\` globally or per workspace.
-- **Per-workspace layout modes**: Assign \`dwindle\`, \`master-stack\`, or \`tabbed\` layouts to specific workspaces.
-- **Auto-floating rules**: Automatically float dialogs, mixers, or Picture-in-Picture windows by \`app_id\` or window title.
-- **Orientation-aware split ratios**: Use separate split ratios for landscape and portrait/vertical monitors.
-- **Minimum-size tabbed fallback**: Switch tiny splits to \`tabbed\` automatically with \`--tabbed-on-min\`.
+- **Custom split ratios (\`--mfact\`)**: Control primary/secondary split proportions (e.g. \`0.60\` for 60/40 splits) on both Sway and River.
+- **Ultrawide single-window centering (\`--single-window-aspect\`)**: Center a solo window cleanly to \`16:9\` (or \`4:3\`) on ultrawide monitors while multi-window splits still fill 100% of the screen.
+- **Centered master & master-stack modes**: Assign \`dwindle\`, \`master-stack\`, \`center-master\`, or \`tabbed\` per workspace.
+- **Promote new windows to master (\`--new-status master\`)**: Automatically swap newly spawned windows into the master slot.
+- **Directional split placement (\`--force-split\`)**: Choose \`auto\`, \`left\` (prepend left/up), or \`right\` (append right/down).
+- **Dynamic smart gaps (\`--smart-gaps\`)**: Collapse inner/outer gaps automatically when a workspace has one tiled window or uses \`tabbed\` layout.
+- **Terminal window swallowing (\`--swallow\`)**: Automatically hide \`foot\`, \`alacritty\`, or \`kitty\` when launching a child GUI window and restore it on close.
+- **Rich auto-float window rules**: Match \`app_id\` or window \`title\` with chained actions (\`float\`, \`sticky\`, \`size W% H%\`, \`center\`, \`move X% Y%\`, \`opacity R\`, \`border none\`).
+- **Orientation-aware split ratios & tabbed fallback**: Separate split ratios for landscape and portrait monitors plus \`--tabbed-on-min\`.
 - **Pause/resume anytime**: Send \`SIGUSR1\` (\`pkill -USR1 autotiling-wl\`) to pause or resume tiling without restarting.
-- **Multi-compositor support**: Works seamlessly with Sway, River (\`river-layout-v3\`), and systemd user sessions.
+- **Multi-compositor support**: Works seamlessly with Sway, River (\`river-layout-v3\`), and systemd user sessions (gracefully ignored on non-systemd setups such as Void).
 
 ---
 
-## Installation (Fedora Linux 45)
+## Web Installation Guide (GitHub Pages)
 
-### 1. Install dependencies
+This repository includes a standalone, interactive installation page at \`docs/index.html\` featuring a 4-distro switcher (**Fedora 45**, **Debian**, **Arch Linux**, and **Void Linux**).
 
+To publish it as a website via **GitHub Pages**:
+1. Push your repository (including \`docs/index.html\`) to GitHub.
+2. Open your repository on GitHub and go to **Settings → Pages**.
+3. Under **Build and deployment**, set **Source** to **Deploy from a branch**.
+4. Select branch **\`main\`** and folder **\`/docs\`**, then click **Save**.
+5. After ~1 minute, GitHub publishes the guide at \`https://<your-username>.github.io/<your-repo>/\`.
+
+---
+
+## Installation
+
+### Fedora Linux 45
+
+#### 1. Install dependencies
 \`\`\`bash
 sudo dnf install -y gcc meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel json-c-devel rpm-build redhat-rpm-config rpmdevtools gzip tar systemd-rpm-macros
 \`\`\`
 
-### 2. Build and install
-
-#### Option A: Standard install (\`/usr/local\`)
-
+#### 2A. Standard install (\`/usr/local\`)
 \`\`\`bash
 git clone https://github.com/<your-username>/autotiling-wl.git
 cd autotiling-wl
@@ -2315,10 +3156,7 @@ ninja -C build
 sudo ninja -C build install
 \`\`\`
 
-> Pass \`-Dcompat_symlink=true\` if you want an \`autotiling\` symlink so existing Sway configs work without edits.
-
-#### Option B: Build and install an RPM package (\`/usr\`)
-
+#### 2B. Build and install an RPM package (\`/usr\`)
 \`\`\`bash
 git clone https://github.com/<your-username>/autotiling-wl.git
 rpmdev-setuptree
@@ -2327,6 +3165,90 @@ cp autotiling-wl/packaging/fedora/autotiling-wl.spec ~/rpmbuild/SPECS/
 rpmbuild -ba ~/rpmbuild/SPECS/autotiling-wl.spec
 sudo dnf install -y ~/rpmbuild/RPMS/$(uname -m)/autotiling-wl-1.1.0-1.fc45.$(uname -m).rpm
 \`\`\`
+
+---
+
+### Debian (Trixie / Testing / Sid)
+
+> Requires \`wayland-protocols >= 1.36\` and \`libjson-c-dev >= 0.17\` (included in Debian 13 Trixie and newer).
+
+#### 1. Install dependencies
+\`\`\`bash
+sudo apt update
+sudo apt install -y build-essential meson ninja-build pkg-config libwayland-dev libwayland-bin wayland-protocols libjson-c-dev debhelper devscripts
+\`\`\`
+
+#### 2A. Standard install (\`/usr/local\`)
+\`\`\`bash
+git clone https://github.com/<your-username>/autotiling-wl.git
+cd autotiling-wl
+meson setup build --prefix=/usr/local -Dcompat_symlink=true
+ninja -C build
+sudo ninja -C build install
+\`\`\`
+
+#### 2B. Build and install a \`.deb\` package (\`/usr\`)
+\`\`\`bash
+git clone https://github.com/<your-username>/autotiling-wl.git
+cd autotiling-wl
+cp -r packaging/debian debian
+chmod +x debian/rules
+dpkg-buildpackage -us -uc -b
+sudo apt install -y ../autotiling-wl_1.1.0-1_*.deb
+\`\`\`
+
+---
+
+### Arch Linux
+
+#### 1. Install dependencies
+\`\`\`bash
+sudo pacman -S --needed base-devel meson ninja pkgconf wayland wayland-protocols json-c
+\`\`\`
+
+#### 2A. Standard install (\`/usr/local\`)
+\`\`\`bash
+git clone https://github.com/<your-username>/autotiling-wl.git
+cd autotiling-wl
+meson setup build --prefix=/usr/local -Dcompat_symlink=true
+ninja -C build
+sudo ninja -C build install
+\`\`\`
+
+#### 2B. Build and install with \`makepkg\` (\`/usr\`)
+\`\`\`bash
+git clone https://github.com/<your-username>/autotiling-wl.git
+mkdir -p autotiling-wl-pkg
+tar --transform 's,^autotiling-wl,autotiling-wl-1.1.0,' -czf autotiling-wl-pkg/autotiling-wl-1.1.0.tar.gz autotiling-wl
+cp autotiling-wl/packaging/arch/PKGBUILD autotiling-wl-pkg/
+cd autotiling-wl-pkg
+makepkg -si
+\`\`\`
+
+---
+
+### Void Linux
+
+> **Note:** Void runs **runit without systemd**; **\`sd_notify\` gracefully no-ops** when **\`$NOTIFY_SOCKET\`** is unset. Install build deps via **\`xbps-install\`** and **launch directly from Sway or River**.
+
+#### 1. Install dependencies
+\`\`\`bash
+sudo xbps-install -Sy base-devel meson ninja pkg-config wayland-devel wayland-protocols json-c-devel
+\`\`\`
+
+#### 2A. Standard install (\`/usr/local\`)
+\`\`\`bash
+git clone https://github.com/<your-username>/autotiling-wl.git
+cd autotiling-wl
+meson setup build --prefix=/usr/local -Dcompat_symlink=true
+ninja -C build
+sudo ninja -C build install
+\`\`\`
+
+#### 2B. Package with \`xbps-src\` (Optional)
+A template is provided at \`packaging/void/template\`. Copy it to \`void-packages/srcpkgs/autotiling-wl/template\`, update \`distfiles\`/\`checksum\`, and run \`./xbps-src pkg autotiling-wl\`.
+
+> Pass \`-Dcompat_symlink=true\` when configuring Meson if you want an \`autotiling\` symlink so existing Sway configs work without edits.
 
 ---
 
@@ -2357,9 +3279,9 @@ autotiling-wl --backend river &
 riverctl default-layout autotiling-wl
 \`\`\`
 
-### Systemd User Service (Optional)
+### Systemd User Service (Fedora / Debian / Arch)
 
-> Note: \`autotiling-wl.service\` runs \`/usr/bin/autotiling-wl\` (the default path when installed via the RPM package or \`--prefix=/usr\`).
+> Note: \`autotiling-wl.service\` runs \`/usr/bin/autotiling-wl\` (the default path when installed via a distro package or \`--prefix=/usr\`). On Void Linux (\`runit\`), launch \`autotiling-wl\` directly from your Sway or River config instead.
 
 \`\`\`bash
 systemctl --user enable --now autotiling-wl.service
@@ -2378,18 +3300,28 @@ limit = 0
 split_ratio = 1.00
 split_ratio_landscape = 1.00
 split_ratio_portrait = 0.80
+mfact = 0.50
+force_split = auto
+new_status = slave
+single_window_aspect = 16:9
+smart_gaps = true
+inner_gap = 10
+outer_gap = 0
+enable_swallow = false
+swallow_terminals = foot, alacritty, kitty
 split_width = 0
 split_height = 0
 tabbed_on_min = false
 
 [workspaces]
 # 2 = master-stack
-# 3 = tabbed
+# 3 = center-master
+# 4 = tabbed
 
 [float_rules]
-rule = app_id:pavucontrol
-rule = app_id:org.gnome.Calculator
-rule = title:Picture-in-Picture
+rule = app_id:pavucontrol -> float, size 55% 65%, center
+rule = app_id:org.gnome.Calculator -> float, center
+rule = title:Picture-in-Picture -> float, sticky, size 28% 28%, move 70% 68%
 \`\`\`
 
 ---
@@ -2410,9 +3342,18 @@ rule = title:Picture-in-Picture
 | \`-sh, --splitheight PX\` | Minimum container height before skipping/tabbing | \`0\` |
 | \`-sr, --splitratio R\` | Height-to-width split ratio multiplier | \`1.0\` |
 | \`--splitratio-portrait R\` | Split ratio override for vertical monitors | \`0.80\` |
+| \`--mfact R\` | Master/primary split ratio (\`0.10\`–\`0.90\`) | \`0.50\` |
+| \`--force-split SIDE\` | Placement side for new splits (\`auto\`, \`left\`, \`right\`) | \`auto\` |
+| \`--new-status MODE\` | Spawn new windows as \`slave\` or promote to \`master\` | \`slave\` |
+| \`--single-window-aspect W:H\` | Center a solo tiled window (\`16:9\`, \`4:3\`, or \`0\`) | \`16:9\` |
+| \`--smart-gaps\` | Collapse gaps when <= 1 tiled window or \`tabbed\` | \`true\` |
+| \`--inner-gap PX\` | Inner gap pixels when multiple tiled windows exist | \`10\` |
+| \`--outer-gap PX\` | Outer gap pixels when multiple tiled windows exist | \`0\` |
+| \`--swallow\` | Hide parent terminal when spawning a child GUI window | \`false\` |
+| \`--swallow-term LIST\` | Comma-separated terminal \`app_id\` list | \`foot,alacritty,kitty\` |
 | \`--tabbed-on-min\` | Switch to \`tabbed\` when below min width/height | \`false\` |
-| \`--float-rule RULE\` | Auto-float rule (\`app_id:foo\` or \`title:bar\`) | — |
-| \`--ws-layout WS:MODE\` | Per-workspace mode (\`dwindle\`, \`master-stack\`, \`tabbed\`) | \`dwindle\` |
+| \`--float-rule RULE\` | Window rule (\`app_id:foo -> float, size 55% 65%, center\`) | — |
+| \`--ws-layout WS:MODE\` | Mode (\`dwindle\`, \`master-stack\`, \`center-master\`, \`tabbed\`) | \`dwindle\` |
 | \`-e, --events EV...\` | Sway IPC events to listen for | \`window\` |
 | \`--backend MODE\` | Force backend (\`auto\`, \`sway\`, \`river\`, \`wlroots\`) | \`auto\` |
 
@@ -2427,6 +3368,593 @@ man autotiling-wl
 ## License
 
 GPL-3.0-or-later
+`,
+  },
+  {
+    path: 'docs/index.html',
+    language: 'html',
+    category: 'Docs & Config',
+    summary: 'Standalone GitHub Pages site with interactive Fedora, Debian, Arch, and Void Linux installation switcher.',
+    content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>autotiling-wl — Installation & Configuration Guide</title>
+  <meta name="description" content="Install and configure autotiling-wl on Fedora, Debian, Arch Linux, and Void Linux for Sway, River, and wlroots." />
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #475569;
+      --code-bg: #0f172a;
+      --code-text: #e2e8f0;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --highlight-bg: #fef3c7;
+      --ok: #10b981;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .header-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: var(--text);
+      text-decoration: none;
+    }
+    nav {
+      display: flex;
+      gap: 20px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+    nav a:hover { color: var(--text); text-decoration: underline; }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 36px 24px 64px;
+    }
+    .hero {
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 32px;
+    }
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.75rem, 3vw, 2.35rem);
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+    }
+    .hero p {
+      margin: 0;
+      max-width: 720px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+    .section-title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+    }
+    .distro-summary {
+      margin: 0 0 18px;
+      font-size: 14px;
+      color: var(--muted);
+      max-width: 780px;
+    }
+    .distro-summary mark {
+      background: var(--highlight-bg);
+      color: var(--text);
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .distro-summary code {
+      background: #e2e8f0;
+      color: var(--text);
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .tablist {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    .tab-btn {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .tab-btn:hover { background: #f1f5f9; color: var(--text); }
+    .tab-btn[aria-selected="true"] {
+      background: var(--text);
+      color: #ffffff;
+    }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 20px;
+      margin-bottom: 44px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .card p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .code-box {
+      position: relative;
+      background: var(--code-bg);
+      color: var(--code-text);
+      border-radius: 6px;
+      padding: 14px;
+    }
+    .code-box pre {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.55;
+      overflow-x: auto;
+      padding-right: 64px;
+      white-space: pre;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 9px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: #334155; }
+    .copy-btn.copied { color: var(--ok); border-color: var(--ok); }
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin-bottom: 44px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: top;
+    }
+    th {
+      background: #f8fafc;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    td:first-child {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .table-wrap { overflow-x: auto; margin-bottom: 44px; }
+    footer {
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 20px 24px;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="#install" class="brand">autotiling-wl 1.1.0</a>
+      <nav aria-label="Page sections">
+        <a href="#install">Install Guide</a>
+        <a href="#quickstart">Quick Start</a>
+        <a href="#config">Config Template</a>
+        <a href="#flags">CLI Options</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Wayland-native dwindle &amp; autotiling daemon for Sway, River &amp; wlroots</h1>
+      <p>
+        Rebuilt in C17 and Meson with recursive dwindle layout by default, split size ratios (<code>--mfact</code>), centered master &amp; ultrawide single-window centering, smart gaps, terminal window swallowing, and rich auto-float window rules.
+      </p>
+    </section>
+
+    <section id="install">
+      <h2 class="section-title" id="distro-headline">Fedora Linux 45 installation</h2>
+      <p class="distro-summary" id="distro-summary"></p>
+
+      <div class="tablist" role="tablist" aria-label="Linux distribution">
+        <button type="button" class="tab-btn" role="tab" data-distro="fedora" aria-selected="true">Fedora 45</button>
+        <button type="button" class="tab-btn" role="tab" data-distro="debian" aria-selected="false">Debian</button>
+        <button type="button" class="tab-btn" role="tab" data-distro="arch" aria-selected="false">Arch Linux</button>
+        <button type="button" class="tab-btn" role="tab" data-distro="void" aria-selected="false">Void Linux</button>
+      </div>
+
+      <div class="steps-grid" id="steps-container"></div>
+    </section>
+
+    <section id="quickstart">
+      <h2 class="section-title">Quick start &amp; compositor hooks</h2>
+      <p class="distro-summary">
+        Initialize <code>~/.config/autotiling-wl/config</code> once, then launch directly from Sway, River, or a systemd user session.
+      </p>
+      <div class="two-col">
+        <div class="card">
+          <div>
+            <h3>Sway (~/.config/sway/config)</h3>
+            <p>Starts autotiling in dwindle mode with an optional SIGUSR1 pause/resume keybind.</p>
+          </div>
+          <div class="code-box">
+            <button type="button" class="copy-btn" data-copy-target="sway-cfg">Copy</button>
+            <pre id="sway-cfg">exec_always autotiling-wl
+bindsym $mod+Shift+t exec pkill -USR1 autotiling-wl</pre>
+          </div>
+        </div>
+        <div class="card">
+          <div>
+            <h3>River (~/.config/river/init)</h3>
+            <p>Speaks <code>river-layout-v3</code> natively with dwindle, center-master, and smart gaps.</p>
+          </div>
+          <div class="code-box">
+            <button type="button" class="copy-btn" data-copy-target="river-cfg">Copy</button>
+            <pre id="river-cfg">autotiling-wl --backend river &amp;
+riverctl default-layout autotiling-wl</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="config">
+      <h2 class="section-title">Default configuration (~/.config/autotiling-wl/config)</h2>
+      <p class="distro-summary">
+        Generate this file automatically via <code>autotiling-wl --init-config</code>.
+      </p>
+      <div class="code-box" style="margin-bottom: 44px;">
+        <button type="button" class="copy-btn" data-copy-target="ini-cfg">Copy</button>
+        <pre id="ini-cfg">[general]
+limit = 0
+split_ratio = 1.00
+split_ratio_landscape = 1.00
+split_ratio_portrait = 0.80
+mfact = 0.50
+force_split = auto
+new_status = slave
+single_window_aspect = 16:9
+smart_gaps = true
+inner_gap = 10
+outer_gap = 0
+enable_swallow = false
+swallow_terminals = foot, alacritty, kitty
+split_width = 0
+split_height = 0
+tabbed_on_min = false
+
+[workspaces]
+# 1 = dwindle | 2 = master-stack | 3 = center-master | 4 = tabbed
+
+[float_rules]
+rule = app_id:pavucontrol -&gt; float, size 55% 65%, center
+rule = app_id:org.gnome.Calculator -&gt; float, center
+rule = title:Picture-in-Picture -&gt; float, sticky, size 28% 28%, move 70% 68%</pre>
+      </div>
+    </section>
+
+    <section id="flags">
+      <h2 class="section-title">CLI flags reference</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Flag</th>
+              <th>Default</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>-l, --limit N</td><td>0 (dwindle)</td><td>Cap split depth (0 = recursive dwindle, 2 = master-stack).</td></tr>
+            <tr><td>-sr, --splitratio R</td><td>1.00 / 0.80</td><td>Height/width split threshold; supports --splitratio-portrait for vertical monitors.</td></tr>
+            <tr><td>--mfact R</td><td>0.50</td><td>Master/primary split proportion between 0.10 and 0.90.</td></tr>
+            <tr><td>--force-split SIDE</td><td>auto</td><td>Place new splits on auto, left (prepend), or right (append).</td></tr>
+            <tr><td>--new-status MODE</td><td>slave</td><td>Keep newly spawned windows as slave or promote to master.</td></tr>
+            <tr><td>--single-window-aspect W:H</td><td>16:9</td><td>Center solo tiled window on ultrawide displays (0 disables).</td></tr>
+            <tr><td>--smart-gaps / --inner-gap / --outer-gap</td><td>true / 10 / 0</td><td>Collapse gaps automatically when &lt;= 1 tiled window or tabbed layout is active.</td></tr>
+            <tr><td>--swallow / --swallow-term LIST</td><td>false / foot,alacritty,kitty</td><td>Hide launching terminal while child GUI window is open via /proc PPID chain.</td></tr>
+            <tr><td>--ws-layout WS:MODE</td><td>dwindle</td><td>Assign dwindle, master-stack, center-master, or tabbed per workspace.</td></tr>
+            <tr><td>--float-rule RULE</td><td>—</td><td>Match app_id:/title: with -&gt; float, sticky, size W% H%, center, move X% Y%, opacity R, border none.</td></tr>
+            <tr><td>--tabbed-on-min / -sw / -sh</td><td>false / 0 / 0</td><td>Switch container to tabbed when smaller than min width/height thresholds.</td></tr>
+            <tr><td>--backend MODE</td><td>auto</td><td>Select auto, sway, river, or wlroots backend driver.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    autotiling-wl 1.1.0 · GPL-3.0-or-later · C17 + Meson for Sway, River &amp; wlroots
+  </footer>
+
+  <script>
+    (function () {
+      var DISTROS = {
+        fedora: {
+          headline: 'Fedora Linux 45 installation',
+          summaryHtml: 'Install the <strong>Fedora 45</strong> toolchain in Step 01, then clone the repository and choose <strong>Option A (Meson into /usr/local)</strong> or <strong>Option B (native RPM into /usr)</strong>.',
+          steps: [
+            {
+              title: '01. Install Fedora 45 toolchain, Wayland headers & RPM tools',
+              desc: 'Installs gcc, meson, ninja, pkgconf, wayland-scanner, wayland-protocols >= 1.36, json-c, and RPM packaging macros.',
+              cmd: 'sudo dnf install -y gcc meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel json-c-devel rpm-build redhat-rpm-config rpmdevtools gzip tar systemd-rpm-macros'
+            },
+            {
+              title: '02. Option A: Build and install with Meson (/usr/local)',
+              desc: 'Standard source build with optional autotiling compatibility symlink.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\\ncd autotiling-wl\\nmeson setup build --prefix=/usr/local -Dcompat_symlink=true\\nninja -C build\\nsudo ninja -C build install\\nautotiling-wl --init-config'
+            },
+            {
+              title: '03. Option B: Build and install a Fedora 45 RPM (/usr)',
+              desc: 'Builds a clean RPM package managed by dnf with systemd user unit integration.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\\nrpmdev-setuptree\\ntar --transform "s,^autotiling-wl,autotiling-wl-1.1.0," -czf ~/rpmbuild/SOURCES/autotiling-wl-1.1.0.tar.gz autotiling-wl\\ncp autotiling-wl/packaging/fedora/autotiling-wl.spec ~/rpmbuild/SPECS/\\nrpmbuild -ba ~/rpmbuild/SPECS/autotiling-wl.spec\\nsudo dnf install -y ~/rpmbuild/RPMS/$(uname -m)/autotiling-wl-1.1.0-1.fc45.$(uname -m).rpm'
+            },
+            {
+              title: '04. Enable systemd user service or launch directly',
+              desc: 'RPM installs /usr/lib/systemd/user/autotiling-wl.service automatically.',
+              cmd: 'systemctl --user enable --now autotiling-wl.service\\n# Pause/resume anytime:\\n# systemctl --user reload autotiling-wl.service'
+            }
+          ]
+        },
+        debian: {
+          headline: 'Debian (Trixie / Testing / Sid) installation',
+          summaryHtml: 'Requires <mark>wayland-protocols &gt;= 1.36</mark> and <mark>libjson-c-dev &gt;= 0.17</mark> (<strong>Debian 13 Trixie and newer</strong>). Build via Meson or <code>dpkg-buildpackage</code>.',
+          steps: [
+            {
+              title: '01. Install Debian build dependencies & debhelper',
+              desc: 'Pulls build-essential, meson, ninja-build, libwayland-bin (wayland-scanner), wayland-protocols, and json-c.',
+              cmd: 'sudo apt update\\nsudo apt install -y build-essential meson ninja-build pkg-config libwayland-dev libwayland-bin wayland-protocols libjson-c-dev debhelper devscripts'
+            },
+            {
+              title: '02. Option A: Build and install with Meson (/usr/local)',
+              desc: 'Direct Meson install with man page, base config template, and autotiling symlink.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\\ncd autotiling-wl\\nmeson setup build --prefix=/usr/local -Dcompat_symlink=true\\nninja -C build\\nsudo ninja -C build install\\nautotiling-wl --init-config'
+            },
+            {
+              title: '03. Option B: Build and install a native .deb package (/usr)',
+              desc: 'Uses packaging/debian metadata to produce an apt-managed .deb package.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\\ncd autotiling-wl\\ncp -r packaging/debian debian\\nchmod +x debian/rules\\ndpkg-buildpackage -us -uc -b\\nsudo apt install -y ../autotiling-wl_1.1.0-1_*.deb'
+            },
+            {
+              title: '04. Enable systemd user service or launch directly',
+              desc: 'Run via systemd user session (.deb install) or exec_always in Sway.',
+              cmd: 'systemctl --user enable --now autotiling-wl.service\\n# Or launch from Sway config:\\n# exec_always autotiling-wl'
+            }
+          ]
+        },
+        arch: {
+          headline: 'Arch Linux installation',
+          summaryHtml: 'Install <code>base-devel</code>, Meson, Wayland, and <code>json-c</code>, then build with Meson or <strong>makepkg</strong>.',
+          steps: [
+            {
+              title: '01. Install Arch Linux toolchain and Wayland packages',
+              desc: 'Pulls base-devel, meson, ninja, pkgconf, wayland, wayland-protocols, and json-c.',
+              cmd: 'sudo pacman -S --needed base-devel meson ninja pkgconf wayland wayland-protocols json-c'
+            },
+            {
+              title: '02. Option A: Build and install with Meson (/usr/local)',
+              desc: 'Direct Meson build with optional autotiling drop-in compatibility symlink.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\\ncd autotiling-wl\\nmeson setup build --prefix=/usr/local -Dcompat_symlink=true\\nninja -C build\\nsudo ninja -C build install\\nautotiling-wl --init-config'
+            },
+            {
+              title: '03. Option B: Build and install via PKGBUILD (makepkg)',
+              desc: 'Creates and installs a tracked pacman package using packaging/arch/PKGBUILD.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\\nmkdir -p autotiling-wl-pkg\\ntar --transform "s,^autotiling-wl,autotiling-wl-1.1.0," -czf autotiling-wl-pkg/autotiling-wl-1.1.0.tar.gz autotiling-wl\\ncp autotiling-wl/packaging/arch/PKGBUILD autotiling-wl-pkg/\\ncd autotiling-wl-pkg\\nmakepkg -si'
+            },
+            {
+              title: '04. Enable systemd user service or launch directly',
+              desc: 'Enable autotiling-wl.service after makepkg or run directly in Sway/River.',
+              cmd: 'systemctl --user enable --now autotiling-wl.service\\n# Verify installation:\\nautotiling-wl --version && man autotiling-wl'
+            }
+          ]
+        },
+        void: {
+          headline: 'Void Linux installation',
+          summaryHtml: 'Void runs <mark>runit without systemd</mark>; <strong><code>sd_notify</code> gracefully no-ops</strong> when <code>$NOTIFY_SOCKET</code> is unset. Install build deps via <code>xbps-install</code> and <strong>launch directly from Sway or River</strong>.',
+          steps: [
+            {
+              title: '01. Install Void Linux dependencies via xbps-install',
+              desc: 'Installs base-devel, meson, ninja, pkg-config, wayland-devel, wayland-protocols, and json-c-devel.',
+              cmd: 'sudo xbps-install -Sy base-devel meson ninja pkg-config wayland-devel wayland-protocols json-c-devel'
+            },
+            {
+              title: '02. Option A: Build and install with Meson (/usr/local)',
+              desc: 'Compiles autotiling-wl, base config, and man page without requiring systemd.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\\ncd autotiling-wl\\nmeson setup build --prefix=/usr/local -Dcompat_symlink=true\\nninja -C build\\nsudo ninja -C build install\\nautotiling-wl --init-config'
+            },
+            {
+              title: '03. Option B: Package with xbps-src (void-packages)',
+              desc: 'Optional XBPS package build using packaging/void/template.',
+              cmd: 'cp autotiling-wl/packaging/void/template void-packages/srcpkgs/autotiling-wl/template\\n# Update distfiles/checksum in template, then run in void-packages:\\n./xbps-src pkg autotiling-wl\\nsudo xbps-install -R hostdir/binpkgs autotiling-wl'
+            },
+            {
+              title: '04. Launch directly from Sway or River (runit / non-systemd)',
+              desc: 'Void starts compositors without systemd; launch directly and toggle pause with SIGUSR1.',
+              cmd: '# Sway (~/.config/sway/config):\\nexec_always autotiling-wl\\nbindsym $mod+Shift+t exec pkill -USR1 autotiling-wl\\n\\n# River (~/.config/river/init):\\nautotiling-wl --backend river &\\nriverctl default-layout autotiling-wl'
+            }
+          ]
+        }
+      };
+
+      var ORDER = ['fedora', 'debian', 'arch', 'void'];
+      var headlineEl = document.getElementById('distro-headline');
+      var summaryEl = document.getElementById('distro-summary');
+      var containerEl = document.getElementById('steps-container');
+      var tabButtons = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+
+      function escapeHtml(str) {
+        return str
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
+      function bindCopyButtons(scope) {
+        var btns = scope.querySelectorAll('.copy-btn');
+        for (var i = 0; i < btns.length; i++) {
+          btns[i].addEventListener('click', function () {
+            var btn = this;
+            var targetId = btn.getAttribute('data-copy-target');
+            var pre = targetId ? document.getElementById(targetId) : btn.nextElementSibling;
+            if (!pre) return;
+            navigator.clipboard.writeText(pre.textContent || '');
+            btn.textContent = 'Copied';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = 'Copy';
+              btn.classList.remove('copied');
+            }, 1600);
+          });
+        }
+      }
+
+      function renderDistro(id, updateHash) {
+        var cfg = DISTROS[id] || DISTROS.fedora;
+        var activeId = DISTROS[id] ? id : 'fedora';
+        headlineEl.textContent = cfg.headline;
+        summaryEl.innerHTML = cfg.summaryHtml;
+
+        for (var i = 0; i < tabButtons.length; i++) {
+          var btn = tabButtons[i];
+          btn.setAttribute('aria-selected', btn.getAttribute('data-distro') === activeId ? 'true' : 'false');
+        }
+
+        var html = '';
+        for (var j = 0; j < cfg.steps.length; j++) {
+          var step = cfg.steps[j];
+          var stepId = 'step-code-' + activeId + '-' + j;
+          html +=
+            '<div class="card">' +
+              '<div>' +
+                '<h3>' + escapeHtml(step.title) + '</h3>' +
+                '<p>' + escapeHtml(step.desc) + '</p>' +
+              '</div>' +
+              '<div class="code-box">' +
+                '<button type="button" class="copy-btn" data-copy-target="' + stepId + '">Copy</button>' +
+                '<pre id="' + stepId + '">' + escapeHtml(step.cmd) + '</pre>' +
+              '</div>' +
+            '</div>';
+        }
+        containerEl.innerHTML = html;
+        bindCopyButtons(containerEl);
+
+        if (updateHash && window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', '#' + activeId);
+        }
+      }
+
+      for (var k = 0; k < tabButtons.length; k++) {
+        tabButtons[k].addEventListener('click', function () {
+          renderDistro(this.getAttribute('data-distro'), true);
+        });
+        tabButtons[k].addEventListener('keydown', function (ev) {
+          var idx = ORDER.indexOf(this.getAttribute('data-distro'));
+          if (idx === -1) return;
+          if (ev.key === 'ArrowRight') {
+            var next = ORDER[(idx + 1) % ORDER.length];
+            renderDistro(next, true);
+            tabButtons[ORDER.indexOf(next)].focus();
+          } else if (ev.key === 'ArrowLeft') {
+            var prev = ORDER[(idx + ORDER.length - 1) % ORDER.length];
+            renderDistro(prev, true);
+            tabButtons[ORDER.indexOf(prev)].focus();
+          }
+        });
+      }
+
+      bindCopyButtons(document);
+      var initialHash = (window.location.hash || '').replace('#', '');
+      renderDistro(DISTROS[initialHash] ? initialHash : 'fedora', false);
+    })();
+  </script>
+</body>
+</html>
 `,
   },
 ];
