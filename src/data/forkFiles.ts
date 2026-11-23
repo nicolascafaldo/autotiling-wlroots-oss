@@ -11,7 +11,7 @@ export const FORK_FILES: ForkFile[] = [
     path: 'meson.build',
     language: 'meson',
     category: 'Build',
-    summary: 'Meson build definition targeting Fedora 45, wayland-scanner, River layout, man page, and base config.',
+    summary: 'Meson build definition targeting Fedora, Debian, Arch, and Void with wayland-scanner, River layout, man page, and base config.',
     content: `project(
   'autotiling-wl',
   'c',
@@ -3170,7 +3170,7 @@ sudo dnf install -y ~/rpmbuild/RPMS/$(uname -m)/autotiling-wl-1.1.0-1.fc45.$(una
 
 ### Debian (Trixie / Testing / Sid)
 
-> Requires \`wayland-protocols >= 1.36\` and \`libjson-c-dev >= 0.17\` (included in Debian 13 Trixie and newer).
+> Requires **\`wayland-protocols >= 1.36\`** and **\`libjson-c-dev >= 0.17\`** (included in **Debian 13 Trixie and newer**).
 
 #### 1. Install dependencies
 \`\`\`bash
@@ -3281,7 +3281,7 @@ riverctl default-layout autotiling-wl
 
 ### Systemd User Service (Fedora / Debian / Arch)
 
-> Note: \`autotiling-wl.service\` runs \`/usr/bin/autotiling-wl\` (the default path when installed via a distro package or \`--prefix=/usr\`). On Void Linux (\`runit\`), launch \`autotiling-wl\` directly from your Sway or River config instead.
+> **Note:** \`autotiling-wl.service\` runs \`/usr/bin/autotiling-wl\` (the default path when installed via a distro package or \`--prefix=/usr\`). On Void Linux (**runit**), **launch \`autotiling-wl\` directly from your Sway or River config instead**.
 
 \`\`\`bash
 systemctl --user enable --now autotiling-wl.service
@@ -3875,6 +3875,30 @@ rule = title:Picture-in-Picture -&gt; float, sticky, size 28% 28%, move 70% 68%<
           .replace(/>/g, '&gt;');
       }
 
+      function copyText(text, onDone) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(onDone, function () {
+            fallbackCopy(text);
+            onDone();
+          });
+          return;
+        }
+        fallbackCopy(text);
+        onDone();
+      }
+
+      function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+
       function bindCopyButtons(scope) {
         var btns = scope.querySelectorAll('.copy-btn');
         for (var i = 0; i < btns.length; i++) {
@@ -3883,13 +3907,14 @@ rule = title:Picture-in-Picture -&gt; float, sticky, size 28% 28%, move 70% 68%<
             var targetId = btn.getAttribute('data-copy-target');
             var pre = targetId ? document.getElementById(targetId) : btn.nextElementSibling;
             if (!pre) return;
-            navigator.clipboard.writeText(pre.textContent || '');
-            btn.textContent = 'Copied';
-            btn.classList.add('copied');
-            setTimeout(function () {
-              btn.textContent = 'Copy';
-              btn.classList.remove('copied');
-            }, 1600);
+            copyText(pre.textContent || '', function () {
+              btn.textContent = 'Copied';
+              btn.classList.add('copied');
+              setTimeout(function () {
+                btn.textContent = 'Copy';
+                btn.classList.remove('copied');
+              }, 1600);
+            });
           });
         }
       }
@@ -3925,7 +3950,9 @@ rule = title:Picture-in-Picture -&gt; float, sticky, size 28% 28%, move 70% 68%<
         bindCopyButtons(containerEl);
 
         if (updateHash && window.history && window.history.replaceState) {
-          window.history.replaceState(null, '', '#' + activeId);
+          try {
+            window.history.replaceState(null, '', '#' + activeId);
+          } catch (e) {}
         }
       }
 

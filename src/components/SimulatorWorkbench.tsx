@@ -379,17 +379,17 @@ export function SimulatorWorkbench({
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-8 border-b border-slate-200">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500 mb-3">
-              <span>Fedora Linux 45</span>
+              <span>Fedora · Debian · Arch · Void</span>
               <span aria-hidden="true">·</span>
               <span>Sway, River &amp; wlroots 0.19</span>
               <span aria-hidden="true">·</span>
-              <span>Dwindle Default + systemd sd_notify</span>
+              <span>Dwindle Default + sd_notify / runit safe</span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 [text-wrap:balance]">
               Wayland-native dwindle &amp; autotiling daemon for Sway and wlroots
             </h1>
             <p className="mt-3 text-base text-slate-600 leading-relaxed max-w-2xl">
-              Rebuilt in C17 and Meson with recursive dwindle by default, River <code className="font-mono text-sm">river-layout-v3</code> support, auto-float rules, per-workspace modes, and <code className="font-mono text-sm">SIGUSR1</code> pause control.
+              Rebuilt in C17 and Meson with recursive dwindle, <code className="font-mono text-sm">--mfact</code> split ratios, <code className="font-mono text-sm">center-master</code>, smart gaps, terminal swallowing, rich float rules, and <code className="font-mono text-sm">SIGUSR1</code> pause control.
             </p>
           </div>
 

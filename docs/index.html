@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>autotiling-wl — Installation & Configuration Guide</title>
+  <meta name="description" content="Install and configure autotiling-wl on Fedora, Debian, Arch Linux, and Void Linux for Sway, River, and wlroots." />
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #475569;
+      --code-bg: #0f172a;
+      --code-text: #e2e8f0;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --highlight-bg: #fef3c7;
+      --ok: #10b981;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .header-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: var(--text);
+      text-decoration: none;
+    }
+    nav {
+      display: flex;
+      gap: 20px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+    nav a:hover { color: var(--text); text-decoration: underline; }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 36px 24px 64px;
+    }
+    .hero {
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 32px;
+    }
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.75rem, 3vw, 2.35rem);
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+    }
+    .hero p {
+      margin: 0;
+      max-width: 720px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+    .section-title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+    }
+    .distro-summary {
+      margin: 0 0 18px;
+      font-size: 14px;
+      color: var(--muted);
+      max-width: 780px;
+    }
+    .distro-summary mark {
+      background: var(--highlight-bg);
+      color: var(--text);
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .distro-summary code {
+      background: #e2e8f0;
+      color: var(--text);
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .tablist {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    .tab-btn {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .tab-btn:hover { background: #f1f5f9; color: var(--text); }
+    .tab-btn[aria-selected="true"] {
+      background: var(--text);
+      color: #ffffff;
+    }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 20px;
+      margin-bottom: 44px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .card p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .code-box {
+      position: relative;
+      background: var(--code-bg);
+      color: var(--code-text);
+      border-radius: 6px;
+      padding: 14px;
+    }
+    .code-box pre {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.55;
+      overflow-x: auto;
+      padding-right: 64px;
+      white-space: pre;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 9px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: #334155; }
+    .copy-btn.copied { color: var(--ok); border-color: var(--ok); }
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin-bottom: 44px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: top;
+    }
+    th {
+      background: #f8fafc;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    td:first-child {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .table-wrap { overflow-x: auto; margin-bottom: 44px; }
+    footer {
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 20px 24px;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="#install" class="brand">autotiling-wl 1.1.0</a>
+      <nav aria-label="Page sections">
+        <a href="#install">Install Guide</a>
+        <a href="#quickstart">Quick Start</a>
+        <a href="#config">Config Template</a>
+        <a href="#flags">CLI Options</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Wayland-native dwindle &amp; autotiling daemon for Sway, River &amp; wlroots</h1>
+      <p>
+        Rebuilt in C17 and Meson with recursive dwindle layout by default, split size ratios (<code>--mfact</code>), centered master &amp; ultrawide single-window centering, smart gaps, terminal window swallowing, and rich auto-float window rules.
+      </p>
+    </section>
+
+    <section id="install">
+      <h2 class="section-title" id="distro-headline">Fedora Linux 45 installation</h2>
+      <p class="distro-summary" id="distro-summary"></p>
+
+      <div class="tablist" role="tablist" aria-label="Linux distribution">
+        <button type="button" class="tab-btn" role="tab" data-distro="fedora" aria-selected="true">Fedora 45</button>
+        <button type="button" class="tab-btn" role="tab" data-distro="debian" aria-selected="false">Debian</button>
+        <button type="button" class="tab-btn" role="tab" data-distro="arch" aria-selected="false">Arch Linux</button>
+        <button type="button" class="tab-btn" role="tab" data-distro="void" aria-selected="false">Void Linux</button>
+      </div>
+
+      <div class="steps-grid" id="steps-container"></div>
+    </section>
+
+    <section id="quickstart">
+      <h2 class="section-title">Quick start &amp; compositor hooks</h2>
+      <p class="distro-summary">
+        Initialize <code>~/.config/autotiling-wl/config</code> once, then launch directly from Sway, River, or a systemd user session.
+      </p>
+      <div class="two-col">
+        <div class="card">
+          <div>
+            <h3>Sway (~/.config/sway/config)</h3>
+            <p>Starts autotiling in dwindle mode with an optional SIGUSR1 pause/resume keybind.</p>
+          </div>
+          <div class="code-box">
+            <button type="button" class="copy-btn" data-copy-target="sway-cfg">Copy</button>
+            <pre id="sway-cfg">exec_always autotiling-wl
+bindsym $mod+Shift+t exec pkill -USR1 autotiling-wl</pre>
+          </div>
+        </div>
+        <div class="card">
+          <div>
+            <h3>River (~/.config/river/init)</h3>
+            <p>Speaks <code>river-layout-v3</code> natively with dwindle, center-master, and smart gaps.</p>
+          </div>
+          <div class="code-box">
+            <button type="button" class="copy-btn" data-copy-target="river-cfg">Copy</button>
+            <pre id="river-cfg">autotiling-wl --backend river &amp;
+riverctl default-layout autotiling-wl</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="config">
+      <h2 class="section-title">Default configuration (~/.config/autotiling-wl/config)</h2>
+      <p class="distro-summary">
+        Generate this file automatically via <code>autotiling-wl --init-config</code>.
+      </p>
+      <div class="code-box" style="margin-bottom: 44px;">
+        <button type="button" class="copy-btn" data-copy-target="ini-cfg">Copy</button>
+        <pre id="ini-cfg">[general]
+limit = 0
+split_ratio = 1.00
+split_ratio_landscape = 1.00
+split_ratio_portrait = 0.80
+mfact = 0.50
+force_split = auto
+new_status = slave
+single_window_aspect = 16:9
+smart_gaps = true
+inner_gap = 10
+outer_gap = 0
+enable_swallow = false
+swallow_terminals = foot, alacritty, kitty
+split_width = 0
+split_height = 0
+tabbed_on_min = false
+
+[workspaces]
+# 1 = dwindle | 2 = master-stack | 3 = center-master | 4 = tabbed
+
+[float_rules]
+rule = app_id:pavucontrol -&gt; float, size 55% 65%, center
+rule = app_id:org.gnome.Calculator -&gt; float, center
+rule = title:Picture-in-Picture -&gt; float, sticky, size 28% 28%, move 70% 68%</pre>
+      </div>
+    </section>
+
+    <section id="flags">
+      <h2 class="section-title">CLI flags reference</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Flag</th>
+              <th>Default</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>-l, --limit N</td><td>0 (dwindle)</td><td>Cap split depth (0 = recursive dwindle, 2 = master-stack).</td></tr>
+            <tr><td>-sr, --splitratio R</td><td>1.00 / 0.80</td><td>Height/width split threshold; supports --splitratio-portrait for vertical monitors.</td></tr>
+            <tr><td>--mfact R</td><td>0.50</td><td>Master/primary split proportion between 0.10 and 0.90.</td></tr>
+            <tr><td>--force-split SIDE</td><td>auto</td><td>Place new splits on auto, left (prepend), or right (append).</td></tr>
+            <tr><td>--new-status MODE</td><td>slave</td><td>Keep newly spawned windows as slave or promote to master.</td></tr>
+            <tr><td>--single-window-aspect W:H</td><td>16:9</td><td>Center solo tiled window on ultrawide displays (0 disables).</td></tr>
+            <tr><td>--smart-gaps / --inner-gap / --outer-gap</td><td>true / 10 / 0</td><td>Collapse gaps automatically when &lt;= 1 tiled window or tabbed layout is active.</td></tr>
+            <tr><td>--swallow / --swallow-term LIST</td><td>false / foot,alacritty,kitty</td><td>Hide launching terminal while child GUI window is open via /proc PPID chain.</td></tr>
+            <tr><td>--ws-layout WS:MODE</td><td>dwindle</td><td>Assign dwindle, master-stack, center-master, or tabbed per workspace.</td></tr>
+            <tr><td>--float-rule RULE</td><td>—</td><td>Match app_id:/title: with -&gt; float, sticky, size W% H%, center, move X% Y%, opacity R, border none.</td></tr>
+            <tr><td>--tabbed-on-min / -sw / -sh</td><td>false / 0 / 0</td><td>Switch container to tabbed when smaller than min width/height thresholds.</td></tr>
+            <tr><td>--backend MODE</td><td>auto</td><td>Select auto, sway, river, or wlroots backend driver.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    autotiling-wl 1.1.0 · GPL-3.0-or-later · C17 + Meson for Sway, River &amp; wlroots
+  </footer>
+
+  <script>
+    (function () {
+      var DISTROS = {
+        fedora: {
+          headline: 'Fedora Linux 45 installation',
+          summaryHtml: 'Install the <strong>Fedora 45</strong> toolchain in Step 01, then clone the repository and choose <strong>Option A (Meson into /usr/local)</strong> or <strong>Option B (native RPM into /usr)</strong>.',
+          steps: [
+            {
+              title: '01. Install Fedora 45 toolchain, Wayland headers & RPM tools',
+              desc: 'Installs gcc, meson, ninja, pkgconf, wayland-scanner, wayland-protocols >= 1.36, json-c, and RPM packaging macros.',
+              cmd: 'sudo dnf install -y gcc meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel json-c-devel rpm-build redhat-rpm-config rpmdevtools gzip tar systemd-rpm-macros'
+            },
+            {
+              title: '02. Option A: Build and install with Meson (/usr/local)',
+              desc: 'Standard source build with optional autotiling compatibility symlink.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\ncd autotiling-wl\nmeson setup build --prefix=/usr/local -Dcompat_symlink=true\nninja -C build\nsudo ninja -C build install\nautotiling-wl --init-config'
+            },
+            {
+              title: '03. Option B: Build and install a Fedora 45 RPM (/usr)',
+              desc: 'Builds a clean RPM package managed by dnf with systemd user unit integration.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\nrpmdev-setuptree\ntar --transform "s,^autotiling-wl,autotiling-wl-1.1.0," -czf ~/rpmbuild/SOURCES/autotiling-wl-1.1.0.tar.gz autotiling-wl\ncp autotiling-wl/packaging/fedora/autotiling-wl.spec ~/rpmbuild/SPECS/\nrpmbuild -ba ~/rpmbuild/SPECS/autotiling-wl.spec\nsudo dnf install -y ~/rpmbuild/RPMS/$(uname -m)/autotiling-wl-1.1.0-1.fc45.$(uname -m).rpm'
+            },
+            {
+              title: '04. Enable systemd user service or launch directly',
+              desc: 'RPM installs /usr/lib/systemd/user/autotiling-wl.service automatically.',
+              cmd: 'systemctl --user enable --now autotiling-wl.service\n# Pause/resume anytime:\n# systemctl --user reload autotiling-wl.service'
+            }
+          ]
+        },
+        debian: {
+          headline: 'Debian (Trixie / Testing / Sid) installation',
+          summaryHtml: 'Requires <mark>wayland-protocols &gt;= 1.36</mark> and <mark>libjson-c-dev &gt;= 0.17</mark> (<strong>Debian 13 Trixie and newer</strong>). Build via Meson or <code>dpkg-buildpackage</code>.',
+          steps: [
+            {
+              title: '01. Install Debian build dependencies & debhelper',
+              desc: 'Pulls build-essential, meson, ninja-build, libwayland-bin (wayland-scanner), wayland-protocols, and json-c.',
+              cmd: 'sudo apt update\nsudo apt install -y build-essential meson ninja-build pkg-config libwayland-dev libwayland-bin wayland-protocols libjson-c-dev debhelper devscripts'
+            },
+            {
+              title: '02. Option A: Build and install with Meson (/usr/local)',
+              desc: 'Direct Meson install with man page, base config template, and autotiling symlink.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\ncd autotiling-wl\nmeson setup build --prefix=/usr/local -Dcompat_symlink=true\nninja -C build\nsudo ninja -C build install\nautotiling-wl --init-config'
+            },
+            {
+              title: '03. Option B: Build and install a native .deb package (/usr)',
+              desc: 'Uses packaging/debian metadata to produce an apt-managed .deb package.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\ncd autotiling-wl\ncp -r packaging/debian debian\nchmod +x debian/rules\ndpkg-buildpackage -us -uc -b\nsudo apt install -y ../autotiling-wl_1.1.0-1_*.deb'
+            },
+            {
+              title: '04. Enable systemd user service or launch directly',
+              desc: 'Run via systemd user session (.deb install) or exec_always in Sway.',
+              cmd: 'systemctl --user enable --now autotiling-wl.service\n# Or launch from Sway config:\n# exec_always autotiling-wl'
+            }
+          ]
+        },
+        arch: {
+          headline: 'Arch Linux installation',
+          summaryHtml: 'Install <code>base-devel</code>, Meson, Wayland, and <code>json-c</code>, then build with Meson or <strong>makepkg</strong>.',
+          steps: [
+            {
+              title: '01. Install Arch Linux toolchain and Wayland packages',
+              desc: 'Pulls base-devel, meson, ninja, pkgconf, wayland, wayland-protocols, and json-c.',
+              cmd: 'sudo pacman -S --needed base-devel meson ninja pkgconf wayland wayland-protocols json-c'
+            },
+            {
+              title: '02. Option A: Build and install with Meson (/usr/local)',
+              desc: 'Direct Meson build with optional autotiling drop-in compatibility symlink.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\ncd autotiling-wl\nmeson setup build --prefix=/usr/local -Dcompat_symlink=true\nninja -C build\nsudo ninja -C build install\nautotiling-wl --init-config'
+            },
+            {
+              title: '03. Option B: Build and install via PKGBUILD (makepkg)',
+              desc: 'Creates and installs a tracked pacman package using packaging/arch/PKGBUILD.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\nmkdir -p autotiling-wl-pkg\ntar --transform "s,^autotiling-wl,autotiling-wl-1.1.0," -czf autotiling-wl-pkg/autotiling-wl-1.1.0.tar.gz autotiling-wl\ncp autotiling-wl/packaging/arch/PKGBUILD autotiling-wl-pkg/\ncd autotiling-wl-pkg\nmakepkg -si'
+            },
+            {
+              title: '04. Enable systemd user service or launch directly',
+              desc: 'Enable autotiling-wl.service after makepkg or run directly in Sway/River.',
+              cmd: 'systemctl --user enable --now autotiling-wl.service\n# Verify installation:\nautotiling-wl --version && man autotiling-wl'
+            }
+          ]
+        },
+        void: {
+          headline: 'Void Linux installation',
+          summaryHtml: 'Void runs <mark>runit without systemd</mark>; <strong><code>sd_notify</code> gracefully no-ops</strong> when <code>$NOTIFY_SOCKET</code> is unset. Install build deps via <code>xbps-install</code> and <strong>launch directly from Sway or River</strong>.',
+          steps: [
+            {
+              title: '01. Install Void Linux dependencies via xbps-install',
+              desc: 'Installs base-devel, meson, ninja, pkg-config, wayland-devel, wayland-protocols, and json-c-devel.',
+              cmd: 'sudo xbps-install -Sy base-devel meson ninja pkg-config wayland-devel wayland-protocols json-c-devel'
+            },
+            {
+              title: '02. Option A: Build and install with Meson (/usr/local)',
+              desc: 'Compiles autotiling-wl, base config, and man page without requiring systemd.',
+              cmd: 'git clone https://github.com/<your-username>/autotiling-wl.git\ncd autotiling-wl\nmeson setup build --prefix=/usr/local -Dcompat_symlink=true\nninja -C build\nsudo ninja -C build install\nautotiling-wl --init-config'
+            },
+            {
+              title: '03. Option B: Package with xbps-src (void-packages)',
+              desc: 'Optional XBPS package build using packaging/void/template.',
+              cmd: 'cp autotiling-wl/packaging/void/template void-packages/srcpkgs/autotiling-wl/template\n# Update distfiles/checksum in template, then run in void-packages:\n./xbps-src pkg autotiling-wl\nsudo xbps-install -R hostdir/binpkgs autotiling-wl'
+            },
+            {
+              title: '04. Launch directly from Sway or River (runit / non-systemd)',
+              desc: 'Void starts compositors without systemd; launch directly and toggle pause with SIGUSR1.',
+              cmd: '# Sway (~/.config/sway/config):\nexec_always autotiling-wl\nbindsym $mod+Shift+t exec pkill -USR1 autotiling-wl\n\n# River (~/.config/river/init):\nautotiling-wl --backend river &\nriverctl default-layout autotiling-wl'
+            }
+          ]
+        }
+      };
+
+      var ORDER = ['fedora', 'debian', 'arch', 'void'];
+      var headlineEl = document.getElementById('distro-headline');
+      var summaryEl = document.getElementById('distro-summary');
+      var containerEl = document.getElementById('steps-container');
+      var tabButtons = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+
+      function escapeHtml(str) {
+        return str
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
+      function copyText(text, onDone) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(onDone, function () {
+            fallbackCopy(text);
+            onDone();
+          });
+          return;
+        }
+        fallbackCopy(text);
+        onDone();
+      }
+
+      function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+
+      function bindCopyButtons(scope) {
+        var btns = scope.querySelectorAll('.copy-btn');
+        for (var i = 0; i < btns.length; i++) {
+          btns[i].addEventListener('click', function () {
+            var btn = this;
+            var targetId = btn.getAttribute('data-copy-target');
+            var pre = targetId ? document.getElementById(targetId) : btn.nextElementSibling;
+            if (!pre) return;
+            copyText(pre.textContent || '', function () {
+              btn.textContent = 'Copied';
+              btn.classList.add('copied');
+              setTimeout(function () {
+                btn.textContent = 'Copy';
+                btn.classList.remove('copied');
+              }, 1600);
+            });
+          });
+        }
+      }
+
+      function renderDistro(id, updateHash) {
+        var cfg = DISTROS[id] || DISTROS.fedora;
+        var activeId = DISTROS[id] ? id : 'fedora';
+        headlineEl.textContent = cfg.headline;
+        summaryEl.innerHTML = cfg.summaryHtml;
+
+        for (var i = 0; i < tabButtons.length; i++) {
+          var btn = tabButtons[i];
+          btn.setAttribute('aria-selected', btn.getAttribute('data-distro') === activeId ? 'true' : 'false');
+        }
+
+        var html = '';
+        for (var j = 0; j < cfg.steps.length; j++) {
+          var step = cfg.steps[j];
+          var stepId = 'step-code-' + activeId + '-' + j;
+          html +=
+            '<div class="card">' +
+              '<div>' +
+                '<h3>' + escapeHtml(step.title) + '</h3>' +
+                '<p>' + escapeHtml(step.desc) + '</p>' +
+              '</div>' +
+              '<div class="code-box">' +
+                '<button type="button" class="copy-btn" data-copy-target="' + stepId + '">Copy</button>' +
+                '<pre id="' + stepId + '">' + escapeHtml(step.cmd) + '</pre>' +
+              '</div>' +
+            '</div>';
+        }
+        containerEl.innerHTML = html;
+        bindCopyButtons(containerEl);
+
+        if (updateHash && window.history && window.history.replaceState) {
+          try {
+            window.history.replaceState(null, '', '#' + activeId);
+          } catch (e) {}
+        }
+      }
+
+      for (var k = 0; k < tabButtons.length; k++) {
+        tabButtons[k].addEventListener('click', function () {
+          renderDistro(this.getAttribute('data-distro'), true);
+        });
+        tabButtons[k].addEventListener('keydown', function (ev) {
+          var idx = ORDER.indexOf(this.getAttribute('data-distro'));
+          if (idx === -1) return;
+          if (ev.key === 'ArrowRight') {
+            var next = ORDER[(idx + 1) % ORDER.length];
+            renderDistro(next, true);
+            tabButtons[ORDER.indexOf(next)].focus();
+          } else if (ev.key === 'ArrowLeft') {
+            var prev = ORDER[(idx + ORDER.length - 1) % ORDER.length];
+            renderDistro(prev, true);
+            tabButtons[ORDER.indexOf(prev)].focus();
+          }
+        });
+      }
+
+      bindCopyButtons(document);
+      var initialHash = (window.location.hash || '').replace('#', '');
+      renderDistro(DISTROS[initialHash] ? initialHash : 'fedora', false);
+    })();
+  </script>
+</body>
+</html>

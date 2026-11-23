@@ -34,8 +34,8 @@ const PROTOCOL_ROWS: ProtocolRow[] = [
   {
     protocol: 'river_layout_manager_v3',
     version: 'v2 (river-layout-v3)',
-    role: 'Computes recursive dwindle and master-stack view rectangles natively via layout_demand.',
-    compositors: 'River',
+    role: 'Computes dwindle, master-stack, center-master, smart-gap, and solo ultrawide geometry natively via layout_demand.',
+    compositors: 'River (Fedora, Debian, Arch, Void)',
   },
   {
     protocol: 'wl_output + zxdg_output_manager_v1',
@@ -46,14 +46,20 @@ const PROTOCOL_ROWS: ProtocolRow[] = [
   {
     protocol: '$SWAYSOCK i3-ipc',
     version: 'Binary JSON IPC',
-    role: 'Inspects container depth, app_id/title float rules, and executes splith, splitv, or layout tabbed.',
+    role: 'Inspects tree depth and applies rich float rules, mfact resize, new_status master swap, smart gaps, and swallow hide/restore.',
     compositors: 'Sway, i3 (compat fallback)',
   },
   {
     protocol: '$NOTIFY_SOCKET (sd_notify)',
     version: 'AF_UNIX SOCK_DGRAM',
-    role: 'Reports READY=1, STATUS= (including SIGUSR1 pause state), and WATCHDOG=1 pings to systemd.',
-    compositors: 'Fedora systemd --user sessions',
+    role: 'Reports READY=1, STATUS=, and WATCHDOG=1 pings to systemd; gracefully no-ops when $NOTIFY_SOCKET is unset.',
+    compositors: 'Fedora, Debian, Arch (systemd); no-op on Void (runit)',
+  },
+  {
+    protocol: '/proc/<pid>/stat & SIGUSR1',
+    version: 'Linux procfs / POSIX',
+    role: 'Inspects PPID ancestor chains for terminal swallowing and toggles pause/resume live via pkill -USR1.',
+    compositors: 'Fedora, Debian, Arch, Void',
   },
 ];
 
@@ -176,9 +182,9 @@ export function ArchitectureSection() {
             </p>
             <div className="mt-6 space-y-3 border-t border-slate-200 pt-5 text-sm">
               <div>
-                <div className="font-semibold text-slate-900">01. Dwindle Default + Workspace Overrides</div>
+                <div className="font-semibold text-slate-900">01. Dwindle Default + Hyprland-Style Ergonomics</div>
                 <p className="text-slate-600 mt-0.5">
-                  Splits recursively by default (<code className="font-mono text-xs">--limit 0</code>), while supporting per-workspace <code className="font-mono text-xs">master-stack</code> or <code className="font-mono text-xs">tabbed</code> overrides and min-size tabbed fallbacks.
+                  Splits recursively by default (<code className="font-mono text-xs">--limit 0</code>) with <code className="font-mono text-xs">--mfact</code> ratios, <code className="font-mono text-xs">center-master</code>, solo ultrawide centering, smart gaps, and terminal swallowing.
                 </p>
               </div>
               <div>
@@ -188,9 +194,9 @@ export function ArchitectureSection() {
                 </p>
               </div>
               <div>
-                <div className="font-semibold text-slate-900">03. Native Systemd &amp; River Integration</div>
+                <div className="font-semibold text-slate-900">03. Multi-Distro Init &amp; River Integration</div>
                 <p className="text-slate-600 mt-0.5">
-                  Speaks <code className="font-mono text-xs">river-layout-v3</code> natively on River and reports readiness, status, and watchdog heartbeats over <code className="font-mono text-xs">sd_notify</code>.
+                  Speaks <code className="font-mono text-xs">river-layout-v3</code> natively and emits <code className="font-mono text-xs">sd_notify</code> on Fedora, Debian, and Arch (<code className="font-mono text-xs">systemd --user</code>), while cleanly no-oping on Void (<code className="font-mono text-xs">runit</code>).
                 </p>
               </div>
             </div>
