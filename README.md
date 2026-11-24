@@ -2,8 +2,6 @@
 
 Automatic window tiling for **Sway**, **River**, and modern **wlroots** Wayland compositors.
 
-`autotiling-wl` automatically switches split direction based on the shape of your focused window to create a **dwindle** layout by default, while adding Hyprland-inspired ergonomics and keeping drop-in compatibility with original `autotiling` flags.
-
 ## Features
 
 - **Dwindle layout by default**: Splits windows recursively along their longest edge without requiring manual split shortcuts.
@@ -23,130 +21,7 @@ Automatic window tiling for **Sway**, **River**, and modern **wlroots** Wayland 
 
 ## Web Installation Guide (GitHub Pages)
 
-This repository includes a standalone, interactive installation page at `docs/index.html` featuring a 4-distro switcher (**Fedora 45**, **Debian**, **Arch Linux**, and **Void Linux**).
-
-To publish it as a website via **GitHub Pages**:
-1. Push your repository (including `docs/index.html`) to GitHub.
-2. Open your repository on GitHub and go to **Settings → Pages**.
-3. Under **Build and deployment**, set **Source** to **Deploy from a branch**.
-4. Select branch **`main`** and folder **`/docs`**, then click **Save**.
-5. After ~1 minute, GitHub publishes the guide at `https://<your-username>.github.io/<your-repo>/`.
-
----
-
-## Installation
-
-### Fedora Linux 45
-
-#### 1. Install dependencies
-```bash
-sudo dnf install -y gcc meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel json-c-devel rpm-build redhat-rpm-config rpmdevtools gzip tar systemd-rpm-macros
-```
-
-#### 2A. Standard install (`/usr/local`)
-```bash
-git clone https://github.com/<your-username>/autotiling-wl.git
-cd autotiling-wl
-meson setup build --prefix=/usr/local -Dcompat_symlink=true
-ninja -C build
-sudo ninja -C build install
-```
-
-#### 2B. Build and install an RPM package (`/usr`)
-```bash
-git clone https://github.com/<your-username>/autotiling-wl.git
-rpmdev-setuptree
-tar --transform 's,^autotiling-wl,autotiling-wl-1.1.0,' -czf ~/rpmbuild/SOURCES/autotiling-wl-1.1.0.tar.gz autotiling-wl
-cp autotiling-wl/packaging/fedora/autotiling-wl.spec ~/rpmbuild/SPECS/
-rpmbuild -ba ~/rpmbuild/SPECS/autotiling-wl.spec
-sudo dnf install -y ~/rpmbuild/RPMS/$(uname -m)/autotiling-wl-1.1.0-1.fc45.$(uname -m).rpm
-```
-
----
-
-### Debian (Trixie / Testing / Sid)
-
-> Requires **`wayland-protocols >= 1.36`** and **`libjson-c-dev >= 0.17`** (included in **Debian 13 Trixie and newer**).
-
-#### 1. Install dependencies
-```bash
-sudo apt update
-sudo apt install -y build-essential meson ninja-build pkg-config libwayland-dev libwayland-bin wayland-protocols libjson-c-dev debhelper devscripts
-```
-
-#### 2A. Standard install (`/usr/local`)
-```bash
-git clone https://github.com/<your-username>/autotiling-wl.git
-cd autotiling-wl
-meson setup build --prefix=/usr/local -Dcompat_symlink=true
-ninja -C build
-sudo ninja -C build install
-```
-
-#### 2B. Build and install a `.deb` package (`/usr`)
-```bash
-git clone https://github.com/<your-username>/autotiling-wl.git
-cd autotiling-wl
-cp -r packaging/debian debian
-chmod +x debian/rules
-dpkg-buildpackage -us -uc -b
-sudo apt install -y ../autotiling-wl_1.1.0-1_*.deb
-```
-
----
-
-### Arch Linux
-
-#### 1. Install dependencies
-```bash
-sudo pacman -S --needed base-devel meson ninja pkgconf wayland wayland-protocols json-c
-```
-
-#### 2A. Standard install (`/usr/local`)
-```bash
-git clone https://github.com/<your-username>/autotiling-wl.git
-cd autotiling-wl
-meson setup build --prefix=/usr/local -Dcompat_symlink=true
-ninja -C build
-sudo ninja -C build install
-```
-
-#### 2B. Build and install with `makepkg` (`/usr`)
-```bash
-git clone https://github.com/<your-username>/autotiling-wl.git
-mkdir -p autotiling-wl-pkg
-tar --transform 's,^autotiling-wl,autotiling-wl-1.1.0,' -czf autotiling-wl-pkg/autotiling-wl-1.1.0.tar.gz autotiling-wl
-cp autotiling-wl/packaging/arch/PKGBUILD autotiling-wl-pkg/
-cd autotiling-wl-pkg
-makepkg -si
-```
-
----
-
-### Void Linux
-
-> **Note:** Void runs **runit without systemd**; **`sd_notify` gracefully no-ops** when **`$NOTIFY_SOCKET`** is unset. Install build deps via **`xbps-install`** and **launch directly from Sway or River**.
-
-#### 1. Install dependencies
-```bash
-sudo xbps-install -Sy base-devel meson ninja pkg-config wayland-devel wayland-protocols json-c-devel
-```
-
-#### 2A. Standard install (`/usr/local`)
-```bash
-git clone https://github.com/<your-username>/autotiling-wl.git
-cd autotiling-wl
-meson setup build --prefix=/usr/local -Dcompat_symlink=true
-ninja -C build
-sudo ninja -C build install
-```
-
-#### 2B. Package with `xbps-src` (Optional)
-A template is provided at `packaging/void/template`. Copy it to `void-packages/srcpkgs/autotiling-wl/template`, update `distfiles`/`checksum`, and run `./xbps-src pkg autotiling-wl`.
-
-> Pass `-Dcompat_symlink=true` when configuring Meson if you want an `autotiling` symlink so existing Sway configs work without edits.
-
----
+This repository includes a standalone, interactive installation page at `https://github.com/nicolascafaldo/autotiling-wlroots-oss/index.html` featuring a 4-distro switcher (**Fedora 45**, **Debian**, **Arch Linux**, and **Void Linux**).
 
 ## Quick Start
 
@@ -258,9 +133,5 @@ For full reference documentation, run:
 ```bash
 man autotiling-wl
 ```
-
----
-
-## License
 
 GPL-3.0-or-later
