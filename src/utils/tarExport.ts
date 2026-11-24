@@ -5,9 +5,13 @@ export interface ArchiveEntry {
 }
 
 function writeOctal(buf: Uint8Array, offset: number, length: number, value: number): void {
-  const oct = value.toString(8).padStart(length - 1, '0');
+  const oct = value.toString(8);
+  if (oct.length > length - 1) {
+    throw new Error(`tarExport: octal value ${value} does not fit in ${length - 1} digits`);
+  }
+  const padded = oct.padStart(length - 1, '0');
   for (let i = 0; i < length - 1; i++) {
-    buf[offset + i] = oct.charCodeAt(i);
+    buf[offset + i] = padded.charCodeAt(i);
   }
   buf[offset + length - 1] = 0;
 }
@@ -38,6 +42,9 @@ export function buildTarArchive(rootDir: string, entries: ArchiveEntry[]): Blob 
         prefix = fullPath.slice(0, idx);
         name = fullPath.slice(idx + 1);
       }
+    }
+    if (name.length > 100) {
+      throw new Error(`tarExport: path too long for ustar header: ${fullPath}`);
     }
 
     writeString(header, 0, 100, name);

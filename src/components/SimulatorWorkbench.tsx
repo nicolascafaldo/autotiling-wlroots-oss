@@ -347,7 +347,12 @@ export function SimulatorWorkbench({
       if (config.innerGap !== 10) parts.push(`--inner-gap ${config.innerGap}`);
       if (config.outerGap !== 0) parts.push(`--outer-gap ${config.outerGap}`);
     }
-    if (config.enableSwallow) parts.push('--swallow');
+    if (config.enableSwallow) {
+      parts.push('--swallow');
+      if (config.swallowTerminals.length > 0) {
+        parts.push(`--swallow-term ${config.swallowTerminals.join(' ')}`);
+      }
+    }
     if (config.splitWidth > 0) parts.push(`-sw ${config.splitWidth}`);
     if (config.splitHeight > 0) parts.push(`-sh ${config.splitHeight}`);
     if (config.tabbedOnMin) parts.push('--tabbed-on-min');
